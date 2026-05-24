@@ -17,9 +17,8 @@ C:\nexrender-tarinakioski
 ├─ templates
 │  └─ tarinakioski_template_v3.aep
 ├─ assets
-│  ├─ esineet.mp4
 │  ├─ esineet2.mp4
-│  └─ haulikko.jpg
+│  └─ patsaat.jpg
 ├─ subtitles
 │  ├─ esineet2.srt
 │  ├─ esineet2.subtitles.json
