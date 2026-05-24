@@ -1,0 +1,43 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python / Whisper virtual environment
+.venv-whisper/
+__pycache__/
+*.pyc
+
+# Local media assets
+assets/
+
+# Render outputs
+output/
+*.avi
+*.mov
+*.mp4
+
+# Generated subtitles and temporary transcription outputs
+subtitles/
+*.srt
+*.vtt
+*.ass
+*.tsv
+*.txt
+*.subtitles.json
+
+# Nexrender generated / temporary jobs
+job-auto.json
+job-*-subtitles.json
+
+# After Effects autosaves and cache-like files
+Adobe After Effects Auto-Save/
+*.aepx
+*.aet
+*.tmp
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
