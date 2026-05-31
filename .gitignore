@@ -28,7 +28,7 @@ subtitles/
 *.subtitles.json
 
 # Nexrender generated / temporary jobs
-job-auto.json
+job-auto*.json
 job-*-subtitles.json
 
 # After Effects autosaves and cache-like files

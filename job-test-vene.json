@@ -1,0 +1,52 @@
+{
+  "template": {
+    "src": "file:///C:/nexrender-tarinakioski/templates/tarinakioski_template_v3.aep",
+    "composition": "MAIN"
+  },
+  "assets": [
+    {
+      "src": "file:///C:/nexrender-tarinakioski/assets/mies.mp4",
+      "type": "video",
+      "layerName": "VIDEO_PLACEHOLDER"
+    },
+    {
+      "src": "file:///C:/nexrender-tarinakioski/assets/vene.jpg",
+      "type": "image",
+      "layerName": "BACKGROUND_PHOTO"
+    },
+    {
+      "type": "data",
+      "layerName": "STATIC_TITLE",
+      "property": "Source Text",
+      "value": "Minun tarinani"
+    },
+
+    {
+      "type": "data",
+      "layerName": "STORY_TITLE",
+      "property": "Source Text",
+      "value": "Vanha puuvene"
+    },
+    {
+      "type": "data",
+      "layerName": "STORY_AUTHOR",
+      "property": "Source Text",
+      "value": "Ukko Ukkeli"
+    },
+    {
+      "type": "data",
+      "layerName": "SUBTITLES",
+      "property": "Source Text",
+      "expression": "var data = [{\"start\":0,\"end\":7.5,\"text\":\"Kulttuurihistoriaalisena museana meillä on näytillä monipuolista esineistöä, muun muassa kahvista, koruista ja mitaleista.\"}];\nfunction wrapText(text, maxChars) {\n  var words = text.split(\" \");\n  var lines = [];\n  var currentLine = \"\";\n  for (var i = 0; i < words.length; i++) {\n    if ((currentLine + \" \" + words[i]).length > maxChars) {\n      lines.push(currentLine);\n      currentLine = words[i];\n    } else {\n      currentLine = currentLine === \"\" ? words[i] : currentLine + \" \" + words[i];\n    }\n  }\n  if (currentLine !== \"\") {\n    lines.push(currentLine);\n  }\n  return lines.join(\"\\r\");\n}\nvar currentText = \"\";\nfor (var i = 0; i < data.length; i++) {\n  if (time >= data[i].start && time <= data[i].end) {\n    currentText = wrapText(data[i].text, 38);\n    break;\n  }\n}\ncurrentText;"
+    }
+  ],
+  "actions": {
+    "postrender": [
+      {
+        "module": "@nexrender/action-copy",
+        "input": "result.mp4",
+        "output": "C:/nexrender-tarinakioski/output/subtitles-test.mp4"
+      }
+    ]
+  }
+}
