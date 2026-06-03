@@ -13,20 +13,20 @@ Renderöinnissä voidaan vaihtaa:
 - tekstitykset
 - lopullisen videon tallennuspaikka
 
-Nykyinen tekstitysmalli toimii paikallisesti Open Source Whisperillä. Video lähetetään ensin paikalliselle Whisperille, joka tunnistaa puheen ja luo SRT-tekstityksen. Node-skripti muuntaa tekstityksen After Effects -templatelle sopivaksi dataksi, lisää tekstityksiin alkutekstin vaatiman aikasiirron, pilkkoo pitkät tekstitysrivit lyhyemmiksi ja muodostaa Nexrenderille valmiin renderöintijobin.
+Nykyinen tekstitysmalli toimii paikallisesti Open Source Whisperillä. Video lähetetään paikalliselle Whisperille, joka tunnistaa puheen ja luo SRT-tekstityksen. Node-skripti muuntaa tekstityksen After Effects -templatelle sopivaksi dataksi, lisää tekstityksiin alkutekstin vaatiman aikasiirron, pilkkoo pitkät tekstitysrivit lyhyemmiksi ja muodostaa Nexrenderille valmiin renderöintijobin.
 
-Sama työnkulku säilyttää aiemmin toteutetun automaattisen videon keston tunnistuksen: lopullisen videon pituus määräytyy puhujavideon todellisen keston ja templaten alkutekstin perusteella.
+Sama työnkulku tunnistaa automaattisesti puhujavideon keston. Lopullisen videon pituus määräytyy puhujavideon todellisen keston ja templaten alkutekstin perusteella.
 
 ---
 
 ## Nykyinen työnkulku
 
 ```text
-video.mp4
+input/story-XXX/video.mp4
   ↓
 paikallinen Whisper
   ↓
-SRT-tekstitys
+output/story-XXX/video.srt
   ↓
 Node: SRT → subtitles.json
   ↓
@@ -36,11 +36,11 @@ Node: 4 sekunnin tekstitysoffset alkutekstiä varten
   ↓
 Node: videon keston tunnistus ffprobella
   ↓
-job-auto-subtitles.json
+output/story-XXX/job-auto.json
   ↓
 Nexrender + After Effects
   ↓
-valmis MP4
+output/story-XXX/valmis MP4
 ```
 
 ---
@@ -55,20 +55,83 @@ C:\nexrender-tarinakioski
 │  └─ tarinakioski_template_v3.aep
 ├─ assets
 │  ├─ tarina.mp4
-│  ├─ kakisalmi.jpg
-│  ├─ tarina.srt
-│  └─ subtitles.json
+│  └─ kakisalmi.jpg
+├─ input
+│  └─ story-001
+│     ├─ video.mp4
+│     ├─ background.jpg
+│     └─ metadata.json
 ├─ output
-│  └─ subtitles-test.mp4
+│  └─ story-001
+│     ├─ video.srt
+│     ├─ subtitles.json
+│     ├─ job-auto.json
+│     └─ Veikko Veikkolainen_Venemuisto Käkisalmesta.mp4
 ├─ job-template.json
-├─ job-auto-subtitles.json
 ├─ prepare-story-render.js
-├─ render-auto-subtitles.js
-├─ convert-srt-to-subtitles-json.js
+├─ package.json
 └─ README.md
 ```
 
-### Tärkeimmät tiedostot nykyisessä mallissa
+---
+
+## Tarinakohtainen aineisto
+
+Jokainen tarina sijoitetaan omaan kansioonsa `input`-kansion alle.
+
+Esimerkki:
+
+```text
+input/story-001/
+  video.mp4
+  background.jpg
+  metadata.json
+```
+
+Tarinakansion tiedostot:
+
+```text
+video.mp4
+```
+
+Puhujan video, jossa on mukana puheääni.
+
+```text
+background.jpg
+```
+
+Tarinavideon taustakuva.
+
+```text
+metadata.json
+```
+
+Tarinan otsikko ja kertoja / tekijä.
+
+Esimerkki:
+
+```json
+{
+  "title": "Venemuisto Käkisalmesta",
+  "author": "Veikko Veikkolainen"
+}
+```
+
+Näiden perusteella skripti muodostaa valmiin videon nimen muodossa:
+
+```text
+Author_Title.mp4
+```
+
+Esimerkiksi:
+
+```text
+Veikko Veikkolainen_Venemuisto Käkisalmesta.mp4
+```
+
+---
+
+## Tärkeimmät tiedostot
 
 ```text
 prepare-story-render.js
@@ -83,22 +146,22 @@ job-template.json
 Lähtöjobi, jossa määritellään After Effects -template, layerit, tekstit, video, taustakuva ja output-polku. Tätä käytetään pohjana uuden automaattisen jobin luomiseen.
 
 ```text
-job-auto-subtitles.json
+output/story-XXX/job-auto.json
 ```
 
 Automaattisesti muodostettu renderöintijobi. Tämä annetaan Nexrenderille.
 
 ```text
-assets/subtitles.json
-```
-
-Node-skriptin muodostama tekstitystiedosto, jota käytetään After Effects -templaten `SUBTITLES`-layerissa.
-
-```text
-assets/tarina.srt
+output/story-XXX/video.srt
 ```
 
 Whisperin muodostama SRT-tekstitystiedosto.
+
+```text
+output/story-XXX/subtitles.json
+```
+
+Node-skriptin muodostama tekstitystiedosto tarkastelua ja jatkokäyttöä varten. Varsinaiset tekstitykset syötetään After Effectsiin Nexrender-jobin expressioninä.
 
 ---
 
@@ -141,7 +204,14 @@ nexrender-cli -h
 Projektikansion juuressa:
 
 ```powershell
-npm install fluent-ffmpeg ffprobe-static
+npm install
+```
+
+Projektissa käytetään muun muassa paketteja:
+
+```text
+fluent-ffmpeg
+ffprobe-static
 ```
 
 Näitä käytetään videon pituuden automaattiseen tunnistamiseen.
@@ -155,13 +225,7 @@ Projektissa käytetään Whisperin paikallisesti ajettavaa Open Source -versiota
 Whisperiä voidaan ajaa komentoriviltä esimerkiksi näin:
 
 ```powershell
-python -m whisper assets/tarina.mp4 --language Finnish --model small --output_format srt --output_dir assets
-```
-
-Tämä luo esimerkiksi tiedoston:
-
-```text
-assets/tarina.srt
+python -m whisper input/story-001/video.mp4 --language Finnish --model small --output_format srt --output_dir output/story-001
 ```
 
 Nykyisessä normaalissa työnkulussa tätä komentoa ei tarvitse ajaa erikseen, koska `prepare-story-render.js` ajaa Whisperin osana valmisteluvaihetta.
@@ -256,46 +320,34 @@ Näin After Effects näyttää kerralla lyhyemmän ja luettavamman tekstin.
 
 ---
 
-## Lähtöjobi
-
-Nykyisessä mallissa käytetään lähtöjobia, esimerkiksi:
-
-```text
-job-template.json
-```
-
-Lähtöjobissa määritellään:
-
-- After Effects -template
-- composition
-- videoassetti
-- taustakuva
-- staattinen otsikko
-- tarinan otsikko
-- kertoja
-- `SUBTITLES`-layer
-- renderöidyn MP4:n tallennuspaikka
-
-`prepare-story-render.js` lukee tämän jobin, päivittää siihen uuden videon, lisää tekstitysexpressionin ja asettaa oikean `frameEnd`-arvon videon todellisen keston mukaan.
-
----
-
 ## Käyttö
 
-### 1. Lisää aineisto
+### 1. Lisää tarinan aineisto
 
-Lisää video ja taustakuva `assets`-kansioon.
+Luo uusi tarinakansio `input`-kansion alle.
 
 Esimerkiksi:
 
 ```text
-assets/tarina.mp4
-assets/kakisalmi.jpg
+input/story-001/
 ```
 
-Videossa tulee olla puheääni mukana.
+Lisää sinne:
 
-Varmista myös, että lähtöjobissa käytetään oikeaa taustakuvaa ja oikeita tekstejä.
+```text
+video.mp4
+background.jpg
+metadata.json
+```
+
+Esimerkki `metadata.json`-tiedostosta:
+
+```json
+{
+  "title": "Venemuisto Käkisalmesta",
+  "author": "Veikko Veikkolainen"
+}
+```
 
 ---
 
@@ -304,19 +356,21 @@ Varmista myös, että lähtöjobissa käytetään oikeaa taustakuvaa ja oikeita 
 Aja projektikansion juuressa:
 
 ```powershell
-node prepare-story-render.js job-template.json job-auto-subtitles.json assets/tarina.mp4
+npm run prepare -- story-001
 ```
 
 Tämä tekee seuraavat asiat:
 
 1. ajaa paikallisen Whisperin videolle
-2. luo SRT-tiedoston `assets`-kansioon
-3. muuntaa SRT:n `assets/subtitles.json`-muotoon
+2. luo SRT-tiedoston tarinan omaan output-kansioon
+3. muuntaa SRT:n `subtitles.json`-muotoon
 4. lisää tekstityksiin 4 sekunnin offsetin
 5. pilkkoo pitkät tekstitysrivit lyhyemmiksi
 6. tunnistaa videon todellisen keston
 7. lisää jobiin oikean `frameEnd`-arvon
-8. luo tiedoston `job-auto-subtitles.json`
+8. vaihtaa jobiin oikean videon, taustakuvan, otsikon ja kertojan
+9. asettaa lopullisen MP4:n tallennuspolun tarinan omaan output-kansioon
+10. luo tiedoston `output/story-001/job-auto.json`
 
 ---
 
@@ -325,25 +379,25 @@ Tämä tekee seuraavat asiat:
 PowerShellissä:
 
 ```powershell
-nexrender-cli --file job-auto-subtitles.json --binary "C:\Program Files\Adobe\Adobe After Effects 2026\Support Files\aerender.exe"
+npm run render -- output/story-001/job-auto.json
 ```
 
-Git Bashissa:
+Vaihtoehtoisesti suoraan Nexrenderillä:
 
-```bash
-nexrender-cli --file job-auto-subtitles.json --binary "/c/Program Files/Adobe/Adobe After Effects 2026/Support Files/aerender.exe"
+```powershell
+nexrender-cli --file output/story-001/job-auto.json --binary "C:\Program Files\Adobe\Adobe After Effects 2026\Support Files\aerender.exe"
 ```
 
 ---
 
 ### 4. Tarkista valmis video
 
-Valmis MP4 löytyy `output`-kansiosta tai siitä polusta, joka on määritelty jobin `@nexrender/action-copy`-asetuksessa.
+Valmis MP4 löytyy tarinan omasta output-kansiosta.
 
 Esimerkiksi:
 
 ```text
-output/subtitles-test.mp4
+output/story-001/Veikko Veikkolainen_Venemuisto Käkisalmesta.mp4
 ```
 
 ---
@@ -351,19 +405,19 @@ output/subtitles-test.mp4
 ## Normaali käyttöjärjestys
 
 ```text
-1. Lisää uusi video ja taustakuva assets-kansioon.
-2. Päivitä lähtöjobiin tarvittaessa otsikko, kertoja, taustakuva ja output-polku.
-3. Aja prepare-story-render.js.
-4. Aja Nexrender job-auto-subtitles.json-tiedostolla.
-5. Tarkista valmis MP4 output-kansiosta.
+1. Luo uusi tarinakansio input-kansion alle.
+2. Lisää kansioon video.mp4, background.jpg ja metadata.json.
+3. Aja valmisteluskripti.
+4. Aja renderöinti.
+5. Tarkista valmis MP4 tarinan omasta output-kansiosta.
 ```
 
 Komennot:
 
 ```powershell
-node prepare-story-render.js job-template.json job-auto-subtitles.json assets/tarina.mp4
+npm run prepare -- story-001
 
-nexrender-cli --file job-auto-subtitles.json --binary "C:\Program Files\Adobe\Adobe After Effects 2026\Support Files\aerender.exe"
+npm run render -- output/story-001/job-auto.json
 ```
 
 ---
@@ -375,5 +429,11 @@ nexrender-cli --file job-auto-subtitles.json --binary "C:\Program Files\Adobe\Ad
 - tekstitysten 4 sekunnin aikasiirto alkutekstin vuoksi
 - pitkien tekstitysrivien automaattinen pilkkominen
 - videon todellisen keston tunnistus ffprobella
+- tarinakohtainen input-rakenne
+- tarinakohtainen output-rakenne
 - automaattisen Nexrender-jobin muodostaminen
 - tekstitysten näyttäminen After Effects -templaten `SUBTITLES`-layerissa
+- valmiin videon nimeäminen metadata-tietojen perusteella
+- npm-komennot valmisteluun ja renderöintiin
+
+---

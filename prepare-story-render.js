@@ -6,41 +6,67 @@ const ffprobePath = require("ffprobe-static").path;
 
 ffmpeg.setFfprobePath(ffprobePath);
 
-const inputJobPath = process.argv[2];
-const outputJobPath = process.argv[3];
-const inputVideoPath = process.argv[4];
-
 const fps = 25;
 const introSeconds = 4;
 const subtitleOffsetSeconds = 4;
 
-if (!inputJobPath || !outputJobPath || !inputVideoPath) {
+const storyId = process.argv[2];
+
+if (!storyId) {
   console.error("Käyttö:");
-  console.error(
-    "node prepare-story-render.js <inputJobPath> <outputJobPath> <inputVideoPath>",
-  );
+  console.error("node prepare-story-render.js <storyId>");
   console.error("");
   console.error("Esimerkki:");
-  console.error(
-    "node prepare-story-render.js job-subt-test.json job-auto-subtitles.json assets/tarina.mp4",
-  );
+  console.error("node prepare-story-render.js story-001");
   process.exit(1);
 }
 
-if (!fs.existsSync(inputJobPath)) {
-  console.error(`Virhe: job-tiedostoa ei löytynyt: ${inputJobPath}`);
-  process.exit(1);
+const storyInputDir = path.join("input", storyId);
+const storyOutputDir = path.join("output", storyId);
+
+const inputJobPath = "job-template.json";
+const outputJobPath = path.join(storyOutputDir, "job-auto.json");
+
+function sanitizeFileName(name) {
+  return name
+    .replace(/[\\/:*?"<>|]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-if (!fs.existsSync(inputVideoPath)) {
-  console.error(`Virhe: videotiedostoa ei löytynyt: ${inputVideoPath}`);
-  process.exit(1);
+const inputVideoPath = path.join(storyInputDir, "video.mp4");
+const inputBackgroundPath = path.join(storyInputDir, "background.jpg");
+const metadataPath = path.join(storyInputDir, "metadata.json");
+
+const srtPath = path.join(storyOutputDir, "video.srt");
+const subtitlesJsonPath = path.join(storyOutputDir, "subtitles.json");
+
+function requireFile(filePath, description) {
+  if (!fs.existsSync(filePath)) {
+    console.error(`Virhe: ${description} puuttuu: ${filePath}`);
+    process.exit(1);
+  }
 }
 
-const videoInfo = path.parse(inputVideoPath);
-const outputDir = videoInfo.dir || ".";
-const srtPath = path.join(outputDir, `${videoInfo.name}.srt`);
-const subtitlesJsonPath = path.join(outputDir, "subtitles.json");
+function ensureDir(dirPath) {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+}
+
+function readMetadata(filePath) {
+  const metadata = JSON.parse(fs.readFileSync(filePath, "utf8"));
+
+  if (!metadata.title) {
+    throw new Error("metadata.json-tiedostosta puuttuu kenttä: title");
+  }
+
+  if (!metadata.author) {
+    throw new Error("metadata.json-tiedostosta puuttuu kenttä: author");
+  }
+
+  return metadata;
+}
 
 function getVideoDuration(videoPath) {
   return new Promise((resolve, reject) => {
@@ -223,18 +249,58 @@ currentText;
 `.trim();
 }
 
-async function createRenderJob(captions) {
+function setLayerText(job, layerName, text) {
+  const asset = job.assets.find(
+    (asset) => asset.type === "data" && asset.layerName === layerName,
+  );
+
+  if (!asset) {
+    throw new Error(`Jobista ei löytynyt data-assetia layerille: ${layerName}`);
+  }
+
+  asset.property = "Source Text";
+  asset.value = text;
+}
+
+function setLayerSource(job, layerName, filePath) {
+  const asset = job.assets.find((asset) => asset.layerName === layerName);
+
+  if (!asset) {
+    throw new Error(`Jobista ei löytynyt assetia layerille: ${layerName}`);
+  }
+
+  asset.src = `file:///${path.resolve(filePath).replace(/\\/g, "/")}`;
+}
+
+function setFinalOutputPath(job, filePath) {
+  if (!job.actions || !Array.isArray(job.actions.postrender)) {
+    throw new Error("Jobista ei löytynyt actions.postrender-kohtaa.");
+  }
+
+  const copyAction = job.actions.postrender.find(
+    (action) => action.module === "@nexrender/action-copy",
+  );
+
+  if (!copyAction) {
+    throw new Error("Jobista ei löytynyt @nexrender/action-copy-toimintoa.");
+  }
+
+  copyAction.input = "result.mp4";
+  copyAction.output = path.resolve(filePath).replace(/\\/g, "/");
+}
+
+async function createRenderJob(captions, metadata, finalVideoPath) {
   console.log("Luodaan automaattinen Nexrender-jobi...");
 
   const job = JSON.parse(fs.readFileSync(inputJobPath, "utf8"));
 
-  const videoAsset = job.assets.find((asset) => asset.type === "video");
+  setLayerSource(job, "VIDEO_PLACEHOLDER", inputVideoPath);
+  setLayerSource(job, "BACKGROUND_PHOTO", inputBackgroundPath);
 
-  if (!videoAsset) {
-    throw new Error("Jobista ei löytynyt video-assetia.");
-  }
+  setLayerText(job, "STORY_TITLE", metadata.title);
+  setLayerText(job, "STORY_AUTHOR", metadata.author);
 
-  videoAsset.src = `file:///${path.resolve(inputVideoPath).replace(/\\/g, "/")}`;
+  setFinalOutputPath(job, finalVideoPath);
 
   const duration = await getVideoDuration(inputVideoPath);
   const frameEnd = Math.ceil((duration + introSeconds) * fps);
@@ -261,11 +327,25 @@ async function createRenderJob(captions) {
 }
 
 async function main() {
-  runWhisper(inputVideoPath, outputDir);
+  requireFile(inputJobPath, "Nexrender-templatejob");
+  requireFile(inputVideoPath, "video");
+  requireFile(inputBackgroundPath, "taustakuva");
+  requireFile(metadataPath, "metadata");
+
+  ensureDir(storyOutputDir);
+
+  const metadata = readMetadata(metadataPath);
+  const finalVideoFileName = `${sanitizeFileName(metadata.author)}_${sanitizeFileName(metadata.title)}.mp4`;
+  const finalVideoPath = path.join(storyOutputDir, finalVideoFileName);
+
+  runWhisper(inputVideoPath, storyOutputDir);
+
   const captions = createSubtitlesJson(srtPath, subtitlesJsonPath);
-  await createRenderJob(captions);
+
+  await createRenderJob(captions, metadata, finalVideoPath);
 
   console.log("");
+  console.log(`Valmis video muodostuu tiedostoon: ${finalVideoPath}`);
   console.log("Valmis. Voit renderöidä komennolla:");
   console.log(
     `nexrender-cli --file ${outputJobPath} --binary "C:\\Program Files\\Adobe\\Adobe After Effects 2026\\Support Files\\aerender.exe"`,
