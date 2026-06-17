@@ -1,0 +1,39 @@
+{
+  "template": {
+    "src": "",
+    "composition": "MAIN"
+  },
+  "assets": [
+    {
+      "src": "",
+      "type": "video",
+      "layerName": "VIDEO_PLACEHOLDER"
+    },
+    {
+      "src": "",
+      "type": "image",
+      "layerName": "BACKGROUND_PHOTO"
+    },
+    {
+      "type": "data",
+      "layerName": "STORY_TITLE",
+      "property": "Source Text",
+      "value": ""
+    },
+    {
+      "type": "data",
+      "layerName": "STORY_AUTHOR",
+      "property": "Source Text",
+      "value": ""
+    }
+  ],
+  "actions": {
+    "postrender": [
+      {
+        "module": "@nexrender/action-copy",
+        "input": "result.mp4",
+        "output": ""
+      }
+    ]
+  }
+}

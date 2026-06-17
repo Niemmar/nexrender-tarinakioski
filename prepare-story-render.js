@@ -7,24 +7,47 @@ const ffprobePath = require("ffprobe-static").path;
 ffmpeg.setFfprobePath(ffprobePath);
 
 const fps = 25;
-const introSeconds = 4;
-const subtitleOffsetSeconds = 4;
+const introSeconds = 6;
+const subtitleOffsetSeconds = 6.5;
 
 const storyId = process.argv[2];
+const variant = process.argv[3] || "normal";
 
 if (!storyId) {
   console.error("Käyttö:");
-  console.error("node prepare-story-render.js <storyId>");
+  console.error("node prepare-story-render.js <storyId> [normal|insta]");
   console.error("");
-  console.error("Esimerkki:");
-  console.error("node prepare-story-render.js story-001");
+  console.error("Esimerkkejä:");
+  console.error("node prepare-story-render.js story-003 normal");
+  console.error("node prepare-story-render.js story-003-insta insta");
   process.exit(1);
 }
+
+const variants = {
+  normal: {
+    templatePath: "templates/tarinakioski_template_v5.aep",
+    jobTemplatePath: "job-template.json",
+    outputSuffix: "",
+  },
+  insta: {
+    templatePath: "templates/tarinakioski_template_insta.aep",
+    jobTemplatePath: "job-story-insta.json",
+    outputSuffix: "_insta",
+  },
+};
+
+if (!variants[variant]) {
+  console.error(`Virhe: tuntematon variantti "${variant}"`);
+  console.error("Sallitut variantit: normal, insta");
+  process.exit(1);
+}
+
+const selectedVariant = variants[variant];
 
 const storyInputDir = path.join("input", storyId);
 const storyOutputDir = path.join("output", storyId);
 
-const inputJobPath = "job-template.json";
+const inputJobPath = selectedVariant.jobTemplatePath;
 const outputJobPath = path.join(storyOutputDir, "job-auto.json");
 
 function sanitizeFileName(name) {
@@ -272,6 +295,11 @@ function setLayerSource(job, layerName, filePath) {
   asset.src = `file:///${path.resolve(filePath).replace(/\\/g, "/")}`;
 }
 
+function setTemplateSource(job, templatePath) {
+  job.template.src = `file:///${path.resolve(templatePath).replace(/\\/g, "/")}`;
+  job.template.composition = "MAIN";
+}
+
 function setFinalOutputPath(job, filePath) {
   if (!job.actions || !Array.isArray(job.actions.postrender)) {
     throw new Error("Jobista ei löytynyt actions.postrender-kohtaa.");
@@ -293,6 +321,8 @@ async function createRenderJob(captions, metadata, finalVideoPath) {
   console.log("Luodaan automaattinen Nexrender-jobi...");
 
   const job = JSON.parse(fs.readFileSync(inputJobPath, "utf8"));
+
+  setTemplateSource(job, selectedVariant.templatePath);
 
   setLayerSource(job, "VIDEO_PLACEHOLDER", inputVideoPath);
   setLayerSource(job, "BACKGROUND_PHOTO", inputBackgroundPath);
@@ -331,11 +361,13 @@ async function main() {
   requireFile(inputVideoPath, "video");
   requireFile(inputBackgroundPath, "taustakuva");
   requireFile(metadataPath, "metadata");
+  requireFile(selectedVariant.templatePath, "After Effects -template");
 
   ensureDir(storyOutputDir);
 
   const metadata = readMetadata(metadataPath);
-  const finalVideoFileName = `${sanitizeFileName(metadata.author)}_${sanitizeFileName(metadata.title)}.mp4`;
+
+  const finalVideoFileName = `${sanitizeFileName(metadata.author)}_${sanitizeFileName(metadata.title)}${selectedVariant.outputSuffix}.mp4`;
   const finalVideoPath = path.join(storyOutputDir, finalVideoFileName);
 
   runWhisper(inputVideoPath, storyOutputDir);
@@ -345,7 +377,10 @@ async function main() {
   await createRenderJob(captions, metadata, finalVideoPath);
 
   console.log("");
+  console.log(`Valittu versio: ${variant}`);
+  console.log(`Template: ${selectedVariant.templatePath}`);
   console.log(`Valmis video muodostuu tiedostoon: ${finalVideoPath}`);
+  console.log("");
   console.log("Valmis. Voit renderöidä komennolla:");
   console.log(
     `nexrender-cli --file ${outputJobPath} --binary "C:\\Program Files\\Adobe\\Adobe After Effects 2026\\Support Files\\aerender.exe"`,

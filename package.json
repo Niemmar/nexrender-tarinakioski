@@ -1,6 +1,8 @@
 {
   "scripts": {
     "prepare": "node prepare-story-render.js",
+    "prepare:hd": "node prepare-story-hd-render.js",
+    "prepare:insta": "node prepare-story-insta-render.js",
     "render": "nexrender-cli --binary \"C:\\Program Files\\Adobe\\Adobe After Effects 2026\\Support Files\\aerender.exe\" --file"
   },
   "dependencies": {
