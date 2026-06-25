@@ -211,8 +211,6 @@ Luo Instagram-video
 Luo HD-video
 ```
 
-Renderöintivalinnat eivät ole oletuksena valittuna.
-
 Ensimmäisen vaiheen painike:
 
 ```text
@@ -374,7 +372,9 @@ Nykyiset perusasetukset:
 
 ```text
 Alkutekstit: 7 sekuntia
-Maksimikesto yhteensä: 4 minuuttia
+Maksimikesto yhteensä:
+Instagram-video 4 minuuttia
+HD-video 10 minuuttia
 FPS: 25
 ```
 
