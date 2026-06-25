@@ -2,116 +2,135 @@
 
 ## Tarkoitus
 
-Tämä projekti renderöi Tarinakioski-videoita After Effects -templateista Nexrenderin avulla.
+Tämä projekti luo Tarinakioski-videoita After Effects -templateista Nexrenderin avulla.
 
-Projektissa on tällä hetkellä kaksi renderöintiversiota:
+Projektissa on kaksi renderöintiversiota:
 
-- HD-versio
-- Instagram-versio
+- Instagram-video
+- HD-video
 
-Molemmat versiot käyttävät samaa tarinakohtaista input-kansiota, samaa `metadata.json`-tiedostoa, samaa puhujavideota ja samaa taustakuvaa. Käyttäjä tai myöhemmin rakennettava lomake voi valita, tehdäänkö HD-versio, Instagram-versio vai molemmat.
+Käyttäjä täyttää paikallisen lomakkeen, valitsee renderöitävät videot ja hyväksyy tarinan. Sen jälkeen paikallinen API tallentaa aineiston, muodostaa tarinalle id:n ja käynnistää valitut renderöinnit.
 
-Renderöinnissä voidaan vaihtaa:
+Renderöinnissä vaihdetaan tarinakohtaisesti:
 
 - puhujan video
 - taustakuva
 - tarinan otsikko
 - kertoja
-- lopullisen videon tallennuspaikka
+- renderöitävät formaatit
 
 ---
 
-## Nykyinen työnkulku
+## Työnkulku
 
 ```text
-input/001/video.mov
-input/001/background.jpg
-input/001/metadata.json
+React-lomake
   ↓
-Node: videon keston tunnistus ffprobella
+Paikallinen Express/Multer-API
   ↓
-Node: Nexrender-jobin muodostaminen valitulle versiolle
+input/<id>/video.mov
+input/<id>/background.jpg
+input/<id>/metadata.json
   ↓
-output/001/job-auto-hd.json
-tai
-output/001/job-auto-insta.json
+prepare-story-insta-render.js / prepare-story-hd-render.js
   ↓
 Nexrender + After Effects
   ↓
-output/001/valmis MP4
+output/<id>/valmis MP4
 ```
+
+Käyttäjän näkökulmasta normaali työnkulku on:
+
+1. täytä tarinan tiedot lomakkeella
+2. lataa taustakuva ja puhujavideo
+3. valitse Instagram-video, HD-video tai molemmat
+4. tarkista tiedot
+5. paina **Hyväksy ja luo videot**
+6. valmis video syntyy `output/<id>`-kansioon
 
 ---
 
 ## Kansiorakenne
 
-Esimerkkirakenne:
-
 ```text
 C:\nexrender-tarinakioski
-├─ templates
-│  ├─ tarinakioski_template_v6.aep
-│  └─ tarinakioski_template_insta_v3.aep
 ├─ input
-│  └─ 001
+│  └─ 003
 │     ├─ video.mov
 │     ├─ background.jpg
 │     └─ metadata.json
 ├─ output
-│  └─ 001
-│     ├─ job-auto-hd.json
+│  └─ 003
 │     ├─ job-auto-insta.json
-│     ├─ 001_Kaisa Ahonen_Virpojaisloru_hd.mp4
-│     └─ 001_Kaisa Ahonen_Virpojaisloru_insta.mp4
-├─ job-template-hd.json
-├─ job-template-insta.json
-├─ prepare-story-hd-render.js
+│     ├─ job-auto-hd.json
+│     ├─ 003_Kaisa Ahonen_Virpojaisloru_insta.mp4
+│     └─ 003_Kaisa Ahonen_Virpojaisloru_hd.mp4
+├─ templates
+│  ├─ tarinakioski_template_insta_v3.aep
+│  └─ tarinakioski_template_v6.aep
+├─ server
+│  ├─ index.js
+│  └─ config.js
+├─ tarinakioski-lomake
+│  └─ src
+│     └─ Tarinalomake.tsx
 ├─ prepare-story-insta-render.js
+├─ prepare-story-hd-render.js
+├─ job-template-insta.json
+├─ job-template-hd.json
 ├─ package.json
 └─ README.md
 ```
 
 ---
 
-## Tarinakohtainen aineisto
+## Tarinakohtainen input-kansio
 
-Jokainen tarina sijoitetaan omaan kansioonsa `input`-kansion alle.
-
-Tarinat nimetään juoksevalla numerolla:
-
-```text
-001
-002
-003
-...
-```
+Jokainen tarina tallennetaan omaan kansioonsa `input`-kansion alle.
 
 Esimerkki:
 
 ```text
-input/001/
+input/003/
   video.mov
   background.jpg
   metadata.json
 ```
 
+Tarina-id muodostetaan automaattisesti seuraavasta vapaasta numerosta.
+
+Jos `input`-kansiossa ovat jo:
+
+```text
+001
+002
+```
+
+seuraava tarina saa id:n:
+
+```text
+003
+```
+
+---
+
+## Tarinan tiedostot
+
 ### video.mov
 
-Puhujan video.
-
-Tällä hetkellä renderöintiskriptit odottavat tiedoston nimeksi:
+Puhujan video tallennetaan nimellä:
 
 ```text
 video.mov
 ```
 
-MOV-muotoa käytetään, jotta taustattoman videon läpinäkyvyys (alpha) säilyy.
+Nykyinen työnkulku käyttää MOV-videota, jotta taustattoman videon alpha eli läpinäkyvyys säilyy.
 
 ### background.jpg
 
-Tarinavideon taustakuva.
+Taustakuva tallennetaan `background`-nimellä.
 
-Taustakuvan nimi saa olla jokin näistä:
+Sallitut muodot:
 
 ```text
 background.jpg
@@ -120,172 +139,156 @@ background.png
 background.webp
 ```
 
-Skriptit etsivät tarinakansiosta tiedoston, jonka nimi on `background` ja jonka tiedostopääte on jokin sallituista päätteistä.
-
 ### metadata.json
 
-Tarinan metatiedot.
+Tarinan metatiedot tallennetaan tiedostoon:
+
+```text
+metadata.json
+```
 
 Esimerkki:
 
 ```json
 {
-  "id": "001",
+  "id": "003",
   "title": "Virpojaisloru",
   "author": "Kaisa Ahonen",
-  "renderFormats": ["hd", "insta"]
+  "renderFormats": ["insta", "hd"]
 }
 ```
 
-Kenttien merkitys:
+Kentät:
 
 ```text
-id              Tarinan tunniste. Sama kuin input-kansion nimi.
-title           Tarinan otsikko. Meneee STORY_TITLE-layerille.
-author          Kertoja. Menee STORY_AUTHOR-layerille.
-renderFormats   Tieto siitä, mitä versioita tarinasta on tarkoitus tehdä.
+id              Tarinan tunniste
+title           Tarinan otsikko
+author          Tarinan kertoja
+renderFormats   Renderöitävät formaatit
 ```
 
-`metadata.json` ei ole pakollinen. Jos se puuttuu, renderöinti voidaan silti tehdä. Tällöin `STORY_TITLE` ja `STORY_AUTHOR` jätetään tyhjiksi.
-
-`title` ja `author` eivät ole pakollisia. Jos jompikumpi puuttuu, vastaava After Effects -tekstilayer korvataan tyhjällä tekstillä.
-
-Jos `metadata.json` sisältää `id`-kentän, sen pitää vastata komentona annettua storyId:tä. Esimerkiksi komennolla:
-
-```powershell
-npm run prepare:hd -- 001
-```
-
-tiedoston `input/001/metadata.json` pitää sisältää joko:
+`renderFormats` voi olla esimerkiksi:
 
 ```json
-{
-  "id": "001"
-}
+["insta"]
 ```
 
-tai id-kenttä voidaan jättää pois.
-
-Jos metadata sanoo esimerkiksi `"id": "002"` mutta komento ajetaan storyId:llä `001`, skripti pysähtyy virheeseen.
-
----
-
-## Renderöintiversiot
-
-## HD-versio
-
-HD-versio käyttää tiedostoa:
-
-```text
-templates/tarinakioski_template_v6.aep
+```json
+["hd"]
 ```
 
-Valmisteluskripti:
-
-```text
-prepare-story-hd-render.js
-```
-
-Job-template:
-
-```text
-job-template-hd.json
-```
-
-Automaattisesti muodostettava jobi:
-
-```text
-output/001/job-auto-hd.json
-```
-
-Valmis video nimetään muodossa:
-
-```text
-ID_AUTHOR_TITLE_hd.mp4
-```
-
-Esimerkiksi:
-
-```text
-001_Kaisa Ahonen_Virpojaisloru_hd.mp4
-```
-
-Jos title ja author puuttuvat, tiedostonimeksi tulee esimerkiksi:
-
-```text
-001_hd.mp4
+```json
+["insta", "hd"]
 ```
 
 ---
 
-## Instagram-versio
+## Lomake
 
-Instagram-versio käyttää tiedostoa:
+Lomake sijaitsee kansiossa:
 
 ```text
-templates/tarinakioski_template_insta_v3.aep
+tarinakioski-lomake
 ```
 
-Valmisteluskripti:
+Lomake on kaksivaiheinen.
+
+### 1. Tietojen syöttö
+
+Ensimmäisessä vaiheessa käyttäjä täyttää tarinan tiedot ja valitsee renderöitävät videot.
+
+Lomakkeella näkyvät muun muassa:
 
 ```text
-prepare-story-insta-render.js
+Uusi tarina
+Syötä tarinan perustiedot ja valitse, mitkä videot luodaan.
 ```
 
-Job-template:
+Renderöintivalinnat:
 
 ```text
-job-template-insta.json
+Luo Instagram-video
+Luo HD-video
 ```
 
-Automaattisesti muodostettava jobi:
+Renderöintivalinnat eivät ole oletuksena valittuna.
+
+Ensimmäisen vaiheen painike:
 
 ```text
-output/001/job-auto-insta.json
+Seuraava
 ```
 
-Valmis video nimetään muodossa:
+### 2. Tarkistus
+
+Toisessa vaiheessa käyttäjä tarkistaa tiedot.
+
+Yhteenvetonäkymän otsikko:
 
 ```text
-ID_AUTHOR_TITLE_insta.mp4
+Tarkista tiedot
 ```
 
-Esimerkiksi:
+Painikkeet:
 
 ```text
-001_Kaisa Ahonen_Virpojaisloru_insta.mp4
+Muokkaa tietoja
+Hyväksy ja luo videot
+Tyhjennä
 ```
 
-Jos title ja author puuttuvat, tiedostonimeksi tulee esimerkiksi:
+`Hyväksy ja luo videot` lähettää tiedot paikalliselle API:lle ja käynnistää tallennus- ja renderöintiputken.
+
+---
+
+## Paikallinen API
+
+Paikallinen API sijaitsee `server`-kansiossa.
+
+Tärkeimmät tiedostot:
 
 ```text
-001_insta.mp4
+server/index.js
+server/config.js
+```
+
+API vastaanottaa lomakkeen lähettämän `FormData`-datan.
+
+API tekee seuraavat asiat:
+
+1. vastaanottaa tekstikentät ja tiedostot
+2. muodostaa seuraavan vapaan tarina-id:n
+3. luo uuden `input/<id>`-kansion
+4. tallentaa videon nimellä `video.mov`
+5. tallentaa taustakuvan `background`-nimellä
+6. kirjoittaa `metadata.json`-tiedoston
+7. ajaa valittujen formaattien prepare-skriptit
+8. käynnistää Nexrender-renderöinnin
+
+Konekohtaiset polut määritellään tiedostossa:
+
+```text
+server/config.js
 ```
 
 ---
 
 ## After Effects -templatet
 
-Templatet sijaitsevat kansiossa:
-
-```text
-templates/
-```
-
 Käytössä olevat templatet:
 
 ```text
-templates/tarinakioski_template_v6.aep
 templates/tarinakioski_template_insta_v3.aep
+templates/tarinakioski_template_v6.aep
 ```
 
-Pääcomposition nimi molemmissa:
+Molemmissa pääcomposition nimi on:
 
 ```text
 MAIN
 ```
 
-Nexrenderin vaihtamat layerit:
+Nexrender vaihtaa seuraavat layerit:
 
 ```text
 VIDEO_PLACEHOLDER
@@ -297,380 +300,175 @@ STORY_AUTHOR
 Layerien roolit:
 
 ```text
-VIDEO_PLACEHOLDER   Vaihdettava puhujavideo
-BACKGROUND_PHOTO    Vaihdettava taustakuva
-STORY_TITLE         Tarinan vaihtuva otsikko
-STORY_AUTHOR        Tarinan vaihtuva kertoja / tekijä
+VIDEO_PLACEHOLDER   Puhujavideo
+BACKGROUND_PHOTO    Taustakuva
+STORY_TITLE         Tarinan otsikko
+STORY_AUTHOR        Tarinan kertoja
 ```
 
-Templatessa on määritelty videoiden maksimikestoksi 4 minuuttia. Lopullinen renderöintikesto asetetaan automaattisesti videon todellisen keston mukaan. Liian pitkä video katkeaa lopusta.
-
-Instagram-templatessa puhujavideo on rajattu neliömäiseen matte-alueeseen, jonka avulla video rajautuu oikeaan alareunaan. Video on templatessa keskitetty tähän rajattuun alueeseen eli puhujan tulee olla keskellä videota.
+Nykyinen työnkulku ei käytä Whisperiä, automaattisia tekstityksiä eikä `STATIC_TITLE`-layeria.
 
 ---
 
-## Tärkeimmät tiedostot
+## Renderöintiskriptit
 
-### prepare-story-hd-render.js
+### Instagram
 
-HD-version valmisteluskripti.
-
-Tekee seuraavat asiat:
-
-1. tarkistaa tarvittavat tiedostot
-2. lukee metadata.json-tiedoston, jos se on olemassa
-3. tarkistaa metadata-id:n suhteessa komentona annettuun storyId:hen
-4. etsii taustakuvan
-5. tunnistaa videon todellisen keston ffprobella
-6. laskee renderöinnin pituuden
-7. vaihtaa Nexrender-jobiin videon, taustakuvan, otsikon ja tekijän
-8. asettaa lopullisen MP4:n tallennuspolun
-9. luo tiedoston `output/001/job-auto-hd.json`
-
-### prepare-story-insta-render.js
-
-Instagram-version valmisteluskripti.
-
-Tekee samat valmistelut kuin HD-versio, mutta käyttää Instagram-templatea ja muodostaa Instagram-version jobin.
-
-Luo tiedoston:
+Instagram-version valmisteluskripti:
 
 ```text
-output/001/job-auto-insta.json
+prepare-story-insta-render.js
 ```
 
-### job-template-hd.json
+Job-template:
 
-HD-version Nexrender-pohjajobi.
+```text
+job-template-insta.json
+```
 
-Sisältää After Effects -templaten, assetit, data-layerit ja postrender-copy-toiminnon.
+Muodostuva jobi:
 
-### job-template-insta.json
+```text
+output/<id>/job-auto-insta.json
+```
 
-Instagram-version Nexrender-pohjajobi.
+Valmis video:
 
-Sisältää After Effects -templaten, assetit, data-layerit ja postrender-copy-toiminnon.
+```text
+output/<id>/<id>_<author>_<title>_insta.mp4
+```
 
-### output/001/job-auto-hd.json
+### HD
 
-Automaattisesti muodostettu HD-renderöintijobi.
+HD-version valmisteluskripti:
 
-### output/001/job-auto-insta.json
+```text
+prepare-story-hd-render.js
+```
 
-Automaattisesti muodostettu Instagram-renderöintijobi.
+Job-template:
+
+```text
+job-template-hd.json
+```
+
+Muodostuva jobi:
+
+```text
+output/<id>/job-auto-hd.json
+```
+
+Valmis video:
+
+```text
+output/<id>/<id>_<author>_<title>_hd.mp4
+```
+
+---
+
+## Videon kesto
+
+Renderöintiskriptit tunnistavat puhujavideon keston ffprobella.
+
+Nykyiset perusasetukset:
+
+```text
+Alkutekstit: 7 sekuntia
+Maksimikesto yhteensä: 4 minuuttia
+FPS: 25
+```
+
+Lopullinen renderöintikesto lasketaan automaattisesti puhujavideon todellisen keston perusteella.
+
+---
+
+## Käynnistäminen
+
+### 1. Asenna projektin riippuvuudet
+
+Projektin juuressa:
+
+```powershell
+npm install
+```
+
+Lomakekansiossa:
+
+```powershell
+cd tarinakioski-lomake
+npm install
+```
+
+### 2. Käynnistä paikallinen API
+
+Projektin juuressa:
+
+```powershell
+node server/index.js
+```
+
+Jos palvelimelle on lisätty oma npm-scripti, käytä sitä.
+
+### 3. Käynnistä lomake
+
+```powershell
+cd tarinakioski-lomake
+npm run dev
+```
+
+Avaa selaimessa Viten ilmoittama paikallinen osoite.
+
+---
+
+## Manuaalinen renderöinti
+
+Normaalisti renderöinti käynnistyy lomakkeelta, mutta renderöintejä voi ajaa myös käsin.
+
+### Instagram
+
+```powershell
+npm run prepare:insta -- 003
+npm run render -- output/003/job-auto-insta.json
+```
+
+### HD
+
+```powershell
+npm run prepare:hd -- 003
+npm run render -- output/003/job-auto-hd.json
+```
+
+### Molemmat
+
+```powershell
+npm run prepare:insta -- 003
+npm run render -- output/003/job-auto-insta.json
+
+npm run prepare:hd -- 003
+npm run render -- output/003/job-auto-hd.json
+```
 
 ---
 
 ## Vaatimukset
 
 - Adobe After Effects 2026
-- Node.js LTS
-- VS Code tai muu koodieditori
+- Node.js
 - Nexrender CLI
-- FFmpeg / ffprobe-tuki videon keston tunnistamiseen
+- FFmpeg / ffprobe
+- paikallinen React-lomake
+- paikallinen Express/Multer-API
 
-After Effectsin renderöijän pitää löytyä polusta:
-
-```text
-C:\Program Files\Adobe\Adobe After Effects 2026\Support Files\aerender.exe
-```
-
-Nykyinen HD- ja Instagram-työnkulku ei vaadi Whisperiä eikä Pythonia.
-
----
-
-## Nexrenderin asennus
-
-Aja PowerShellissä:
+Nexrender CLI:n ja copy-actionin voi asentaa globaalisti:
 
 ```powershell
 npm install -g @nexrender/cli @nexrender/action-copy
 ```
 
-Tarkista asennus:
+After Effectsin renderöijän polku määritellään projektin asetuksissa.
 
-```powershell
-nexrender-cli -h
-```
-
----
-
-## Projektin Node-paketit
-
-Projektikansion juuressa:
-
-```powershell
-npm install
-```
-
-Projektissa käytetään muun muassa paketteja:
+Nykyisellä kehityskoneella polku on ollut:
 
 ```text
-fluent-ffmpeg
-ffprobe-static
+C:\Program Files\Adobe\Adobe After Effects 2026\Support Files\aerender.exe
 ```
-
-Näitä käytetään videon pituuden automaattiseen tunnistamiseen.
-
----
-
-## package.json scripts
-
-Tällä hetkellä käytössä olevat komennot ovat esimerkiksi:
-
-```json
-{
-  "scripts": {
-    "prepare": "node prepare-story-render.js",
-    "prepare:hd": "node prepare-story-hd-render.js",
-    "prepare:insta": "node prepare-story-insta-render.js",
-    "render": "nexrender-cli --binary \"C:\\Program Files\\Adobe\\Adobe After Effects 2026\\Support Files\\aerender.exe\" --file"
-  }
-}
-```
-
-`prepare` on vanha valmistelukomento. Sitä ei käytetä nykyiseen HD- ja Instagram-työnkulkuun.
-
-Nykyiset komennot ovat:
-
-```powershell
-npm run prepare:hd -- 001
-npm run prepare:insta -- 001
-npm run render -- output/001/job-auto-hd.json
-npm run render -- output/001/job-auto-insta.json
-```
-
----
-
-## Käyttö: HD-version tekeminen
-
-### 1. Lisää tarinan aineisto
-
-Luo uusi tarinakansio `input`-kansion alle.
-
-Esimerkiksi:
-
-```text
-input/001/
-```
-
-Lisää sinne:
-
-```text
-video.mov
-background.jpg
-metadata.json
-```
-
-Esimerkki `metadata.json`-tiedostosta:
-
-```json
-{
-  "id": "001",
-  "title": "Virpojaisloru",
-  "author": "Kaisa Ahonen",
-  "renderFormats": ["hd"]
-}
-```
-
-### 2. Valmistele HD-renderöintijobi
-
-Aja projektikansion juuressa:
-
-```powershell
-npm run prepare:hd -- 001
-```
-
-Tämä luo tiedoston:
-
-```text
-output/001/job-auto-hd.json
-```
-
-### 3. Renderöi HD-video
-
-Aja:
-
-```powershell
-npm run render -- output/001/job-auto-hd.json
-```
-
-Vaihtoehtoisesti suoraan Nexrenderillä:
-
-```powershell
-nexrender-cli --file output/001/job-auto-hd.json --binary "C:\Program Files\Adobe\Adobe After Effects 2026\Support Files\aerender.exe"
-```
-
-### 4. Tarkista valmis HD-video
-
-Valmis MP4 löytyy tarinan omasta output-kansiosta.
-
-Esimerkiksi:
-
-```text
-output/001/001_Kaisa Ahonen_Virpojaisloru_hd.mp4
-```
-
----
-
-## Käyttö: Instagram-version tekeminen
-
-### 1. Lisää tarinan aineisto
-
-Samaa input-kansiota voidaan käyttää kuin HD-versiossa.
-
-Esimerkiksi:
-
-```text
-input/001/
-  video.mov
-  background.jpg
-  metadata.json
-```
-
-Esimerkki `metadata.json`-tiedostosta:
-
-```json
-{
-  "id": "001",
-  "title": "Virpojaisloru",
-  "author": "Kaisa Ahonen",
-  "renderFormats": ["insta"]
-}
-```
-
-Jos samasta tarinasta tehdään sekä HD että Instagram:
-
-```json
-{
-  "id": "001",
-  "title": "Virpojaisloru",
-  "author": "Kaisa Ahonen",
-  "renderFormats": ["hd", "insta"]
-}
-```
-
-### 2. Valmistele Instagram-renderöintijobi
-
-Aja projektikansion juuressa:
-
-```powershell
-npm run prepare:insta -- 001
-```
-
-Tämä luo tiedoston:
-
-```text
-output/001/job-auto-insta.json
-```
-
-### 3. Renderöi Instagram-video
-
-Aja:
-
-```powershell
-npm run render -- output/001/job-auto-insta.json
-```
-
-Vaihtoehtoisesti suoraan Nexrenderillä:
-
-```powershell
-nexrender-cli --file output/001/job-auto-insta.json --binary "C:\Program Files\Adobe\Adobe After Effects 2026\Support Files\aerender.exe"
-```
-
-### 4. Tarkista valmis Instagram-video
-
-Valmis MP4 löytyy tarinan omasta output-kansiosta.
-
-Esimerkiksi:
-
-```text
-output/001/001_Kaisa Ahonen_Virpojaisloru_insta.mp4
-```
-
----
-
-## Normaali käyttöjärjestys
-
-### Vain HD
-
-```powershell
-npm run prepare:hd -- 001
-npm run render -- output/001/job-auto-hd.json
-```
-
-### Vain Instagram
-
-```powershell
-npm run prepare:insta -- 001
-npm run render -- output/001/job-auto-insta.json
-```
-
-### Molemmat versiot
-
-```powershell
-npm run prepare:hd -- 001
-npm run render -- output/001/job-auto-hd.json
-
-npm run prepare:insta -- 001
-npm run render -- output/001/job-auto-insta.json
-```
-
----
-
-## Tuleva lomakekäyttö
-
-Myöhemmässä vaiheessa käyttäjä ei kirjoita komentoja itse.
-
-Tavoiteltu tuotantoputki:
-
-```text
-Käyttäjä täyttää paikallisen lomakkeen
-  ↓
-Käyttäjä valitsee version: HD, Instagram tai molemmat
-  ↓
-Sovellus luo seuraavan vapaan storyId:n, esimerkiksi 001
-  ↓
-Sovellus luo kansion input/001
-  ↓
-Sovellus tallentaa metadata.json-tiedoston
-  ↓
-Sovellus tallentaa tai kopioi videon nimellä video.mov
-  ↓
-Sovellus tallentaa tai kopioi taustakuvan nimellä background.jpg / .png / .webp
-  ↓
-Sovellus ajaa valitun valmisteluskriptin
-  ↓
-Sovellus voi käynnistää Nexrender-renderöinnin
-```
-
-Tärkeä periaate:
-
-```text
-Tarina on yksi asia.
-Renderöintiversio on käyttäjän valinta.
-```
-
-Sama `input/001` voi siis tuottaa HD-version, Instagram-version tai molemmat.
-
----
-
-## Nykyinen tilanne
-
-Nykyisessä versiossa:
-
-- HD- ja Instagram-versiot toimivat erillisinä valmisteluskripteinä
-- molemmat käyttävät samaa input-rakennetta
-- storyId on juokseva numero, esimerkiksi `001`
-- metadata.json voi olla mukana mutta ei ole pakollinen
-- title ja author voivat puuttua
-- metadata.id tarkistetaan storyId:tä vasten, jos id on annettu
-- taustakuva etsitään nimellä `background` ja sallitulla tiedostopäätteellä
-- video odotetaan nimellä `video.mov`
-- renderöinnin pituus lasketaan videon todellisen keston mukaan
-- 7 sekunnin alkutekstit lisätään videon keston päälle
-- varsinaisen videon maksimikesto on 4 minuuttia
-- valmis tiedosto nimetään muodossa `ID_AUTHOR_TITLE_hd.mp4` tai `ID_AUTHOR_TITLE_insta.mp4`
-- Nexrender-jobit muodostuvat tarinan omaan output-kansioon
-
-Nykyinen normaali työnkulku ei käytä Whisperiä eikä tekstityksiä.

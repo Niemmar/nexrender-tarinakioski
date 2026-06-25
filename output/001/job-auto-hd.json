@@ -1,0 +1,41 @@
+{
+  "template": {
+    "src": "file:///C:/nexrender-tarinakioski/templates/tarinakioski_template_v6.aep",
+    "composition": "MAIN",
+    "frameStart": 0,
+    "frameEnd": 1175
+  },
+  "assets": [
+    {
+      "src": "file:///C:/nexrender-tarinakioski/input/001/video.mov",
+      "type": "video",
+      "layerName": "VIDEO_PLACEHOLDER"
+    },
+    {
+      "src": "file:///C:/nexrender-tarinakioski/input/001/background.jpg",
+      "type": "image",
+      "layerName": "BACKGROUND_PHOTO"
+    },
+    {
+      "type": "data",
+      "layerName": "STORY_TITLE",
+      "property": "Source Text",
+      "value": "Virpojaisloru"
+    },
+    {
+      "type": "data",
+      "layerName": "STORY_AUTHOR",
+      "property": "Source Text",
+      "value": "Kaisa Ahonen"
+    }
+  ],
+  "actions": {
+    "postrender": [
+      {
+        "module": "@nexrender/action-copy",
+        "input": "result.mp4",
+        "output": "C:/nexrender-tarinakioski/output/001/001_Kaisa Ahonen_Virpojaisloru_hd.mp4"
+      }
+    ]
+  }
+}

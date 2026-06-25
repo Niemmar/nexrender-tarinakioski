@@ -1,0 +1,41 @@
+{
+  "template": {
+    "src": "file:///C:/nexrender-tarinakioski/templates/tarinakioski_template_insta_v3.aep",
+    "composition": "MAIN",
+    "frameStart": 0,
+    "frameEnd": 1175
+  },
+  "assets": [
+    {
+      "src": "file:///C:/nexrender-tarinakioski/input/002/video.mov",
+      "type": "video",
+      "layerName": "VIDEO_PLACEHOLDER"
+    },
+    {
+      "src": "file:///C:/nexrender-tarinakioski/input/002/background.jpg",
+      "type": "image",
+      "layerName": "BACKGROUND_PHOTO"
+    },
+    {
+      "type": "data",
+      "layerName": "STORY_TITLE",
+      "property": "Source Text",
+      "value": "Virpojaisloru"
+    },
+    {
+      "type": "data",
+      "layerName": "STORY_AUTHOR",
+      "property": "Source Text",
+      "value": "Kaisa Ahonen"
+    }
+  ],
+  "actions": {
+    "postrender": [
+      {
+        "module": "@nexrender/action-copy",
+        "input": "result.mp4",
+        "output": "C:/nexrender-tarinakioski/output/002/002_Kaisa Ahonen_Virpojaisloru_insta.mp4"
+      }
+    ]
+  }
+}
