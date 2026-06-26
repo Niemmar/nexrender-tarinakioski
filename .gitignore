@@ -4,6 +4,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Frontend build outputs
+dist/
+build/
+
 # Python / Whisper virtual environment
 .venv-whisper/
 __pycache__/
@@ -12,11 +16,16 @@ __pycache__/
 # Local media assets
 assets/
 
-# Render outputs
-output/
-*.avi
-*.mov
-*.mp4
+# Local form uploads / temporary browser uploads
+uploads/
+tarinakioski-lomake/uploads/
+
+# Input source videos are usually too large for GitHub
+input/**/*.mov
+input/**/*.mp4
+input/**/*.avi
+input/**/*.mkv
+input/**/*.webm
 
 # Generated subtitles and temporary transcription outputs
 subtitles/
@@ -24,11 +33,12 @@ subtitles/
 *.vtt
 *.ass
 *.tsv
-*.txt
 *.subtitles.json
 
-# Nexrender generated / temporary jobs
-job-auto*.json
+# Keep ordinary .txt files visible for documentation/readmes.
+# If transcript .txt files are generated later, ignore them with a narrower path.
+
+# Nexrender generated / temporary subtitle jobs
 job-*-subtitles.json
 
 # After Effects autosaves and cache-like files
@@ -41,4 +51,3 @@ Adobe After Effects Auto-Save/
 .DS_Store
 Thumbs.db
 .vscode/
-input/*/video.mov

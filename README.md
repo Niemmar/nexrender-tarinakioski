@@ -124,7 +124,7 @@ Puhujan video tallennetaan nimellä:
 video.mov
 ```
 
-Nykyinen työnkulku käyttää MOV-videota, jotta taustattoman videon alpha eli läpinäkyvyys säilyy.
+Nykyinen työnkulku käyttää MOV-videota, jotta taustattoman videon alpha eli läpinäkyvyys säilyy. Videossa tulee olla tausta valmiiksi poistettuna ennen renderöintiä. Tässä työssä se on tehty Adobe After Effects Rotobrush-työkalulla.
 
 ### background.jpg
 
@@ -372,13 +372,10 @@ Nykyiset perusasetukset:
 
 ```text
 Alkutekstit: 7 sekuntia
-Maksimikesto yhteensä:
-Instagram-video 4 minuuttia
-HD-video 10 minuuttia
+Instagram-videon maksimikesto 4 minuuttia
+HD-videon maksimikesto 10 minuuttia
 FPS: 25
 ```
-
-Lopullinen renderöintikesto lasketaan automaattisesti puhujavideon todellisen keston perusteella.
 
 ---
 

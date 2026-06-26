@@ -9,17 +9,92 @@ import { config } from "./config.js";
 const app = express();
 const port = 3001;
 
-if (!fs.existsSync(config.uploadsDir)) {
-  fs.mkdirSync(config.uploadsDir, { recursive: true });
+const allowedRenderFormats = ["insta", "hd"];
+const renderStatusByStoryId = new Map();
+
+function initializeRenderStatus(storyId, formats) {
+  const jobs = {};
+
+  formats.forEach((format) => {
+    jobs[format] = {
+      format,
+      status: "queued",
+      progress: 0,
+      message: "Odottaa renderöintiä.",
+      updatedAt: new Date().toISOString(),
+    };
+  });
+
+  renderStatusByStoryId.set(storyId, {
+    storyId,
+    jobs,
+    updatedAt: new Date().toISOString(),
+  });
 }
 
-if (!fs.existsSync(config.inputRootDir)) {
-  fs.mkdirSync(config.inputRootDir, { recursive: true });
+function updateRenderStatus(storyId, format, patch) {
+  const current = renderStatusByStoryId.get(storyId) ?? {
+    storyId,
+    jobs: {},
+  };
+
+  const previous = current.jobs[format] ?? {
+    format,
+    status: "queued",
+    progress: 0,
+    message: "",
+  };
+
+  current.jobs[format] = {
+    ...previous,
+    ...patch,
+    updatedAt: new Date().toISOString(),
+  };
+
+  current.updatedAt = new Date().toISOString();
+
+  renderStatusByStoryId.set(storyId, current);
 }
 
-if (!fs.existsSync(config.outputRootDir)) {
-  fs.mkdirSync(config.outputRootDir, { recursive: true });
+function parseNexrenderProgress(text) {
+  const match = text.match(/rendering progress\s+(\d+(?:\.\d+)?)%/i);
+
+  if (!match) {
+    return null;
+  }
+
+  const progress = Number(match[1]);
+
+  if (Number.isNaN(progress)) {
+    return null;
+  }
+
+  return Math.max(0, Math.min(100, progress));
 }
+
+function getRenderStatusResponse(storyId) {
+  const status = renderStatusByStoryId.get(storyId);
+
+  if (!status) {
+    return null;
+  }
+
+  return {
+    storyId,
+    jobs: Object.values(status.jobs),
+    updatedAt: status.updatedAt,
+  };
+}
+
+function ensureDir(dirPath) {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+}
+
+ensureDir(config.uploadsDir);
+ensureDir(config.inputRootDir);
+ensureDir(config.outputRootDir);
 
 const storage = multer.diskStorage({
   destination: (req, file, callback) => {
@@ -54,8 +129,49 @@ function getNextStoryId() {
   return String(nextId).padStart(3, "0");
 }
 
+function createStoryDir() {
+  let storyId = getNextStoryId();
+
+  while (true) {
+    const storyDir = path.join(config.inputRootDir, storyId);
+
+    try {
+      fs.mkdirSync(storyDir);
+      return {
+        storyId,
+        storyDir,
+      };
+    } catch (error) {
+      if (error.code !== "EEXIST") {
+        throw error;
+      }
+
+      const nextNumber = Number(storyId) + 1;
+      storyId = String(nextNumber).padStart(3, "0");
+    }
+  }
+}
+
 function getFileExtension(filename) {
   return path.extname(filename).toLowerCase();
+}
+
+function parseRenderFormats(rawValue) {
+  if (!rawValue) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue);
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.filter((format) => allowedRenderFormats.includes(format));
+  } catch {
+    return [];
+  }
 }
 
 function getJobFilePath(storyId, format) {
@@ -90,7 +206,31 @@ function getNexrenderCommand() {
   return config.nexrenderCommand;
 }
 
+function cleanupUploadedFiles(files) {
+  const uploadedFiles = [
+    ...(files?.backgroundImage ?? []),
+    ...(files?.storyVideo ?? []),
+  ];
+
+  uploadedFiles.forEach((file) => {
+    if (file?.path && fs.existsSync(file.path)) {
+      try {
+        fs.unlinkSync(file.path);
+      } catch (error) {
+        console.error(`Väliaikaistiedoston poisto epäonnistui: ${file.path}`);
+        console.error(error);
+      }
+    }
+  });
+}
+
 function startRenderProcess(scriptName, storyId, format) {
+  updateRenderStatus(storyId, format, {
+    status: "preparing",
+    progress: 0,
+    message: "Valmistellaan renderöintiä.",
+  });
+
   const prepareProcess = spawn("node", [scriptName, storyId], {
     cwd: config.projectRootDir,
   });
@@ -107,6 +247,12 @@ function startRenderProcess(scriptName, storyId, format) {
     console.log(`[${scriptName}] päättyi koodilla ${code}`);
 
     if (code !== 0) {
+      updateRenderStatus(storyId, format, {
+        status: "failed",
+        progress: 0,
+        message: "Renderöinnin valmistelu epäonnistui.",
+      });
+
       console.error(`[${scriptName}] epäonnistui, Nexrenderiä ei käynnistetä.`);
       return;
     }
@@ -116,9 +262,21 @@ function startRenderProcess(scriptName, storyId, format) {
     try {
       jobFilePath = getJobFilePath(storyId, format);
     } catch (error) {
+      updateRenderStatus(storyId, format, {
+        status: "failed",
+        progress: 0,
+        message: "Nexrender-jobitiedostoa ei löytynyt.",
+      });
+
       console.error(error);
       return;
     }
+
+    updateRenderStatus(storyId, format, {
+      status: "rendering",
+      progress: 0,
+      message: "Renderöinti käynnissä.",
+    });
 
     console.log(`Käynnistetään Nexrender: ${jobFilePath}`);
 
@@ -129,21 +287,35 @@ function startRenderProcess(scriptName, storyId, format) {
       config.aerenderPath,
     ];
 
+    const nexrenderCommand = getNexrenderCommand();
+
     const nexrenderProcess =
       process.platform === "win32"
         ? spawn(
             "cmd.exe",
-            ["/d", "/s", "/c", config.nexrenderCommand, ...nexrenderArgs],
+            ["/d", "/s", "/c", nexrenderCommand, ...nexrenderArgs],
             {
               cwd: config.projectRootDir,
             },
           )
-        : spawn(config.nexrenderCommand, nexrenderArgs, {
+        : spawn(nexrenderCommand, nexrenderArgs, {
             cwd: config.projectRootDir,
           });
 
     nexrenderProcess.stdout.on("data", (data) => {
-      console.log(`[nexrender ${format} stdout] ${data.toString().trim()}`);
+      const text = data.toString().trim();
+
+      console.log(`[nexrender ${format} stdout] ${text}`);
+
+      const progress = parseNexrenderProgress(text);
+
+      if (progress !== null) {
+        updateRenderStatus(storyId, format, {
+          status: "rendering",
+          progress,
+          message: `Renderöinti käynnissä: ${Math.round(progress)} %.`,
+        });
+      }
     });
 
     nexrenderProcess.stderr.on("data", (data) => {
@@ -152,24 +324,41 @@ function startRenderProcess(scriptName, storyId, format) {
 
     nexrenderProcess.on("close", (renderCode) => {
       console.log(`[nexrender ${format}] päättyi koodilla ${renderCode}`);
+
+      if (renderCode === 0) {
+        updateRenderStatus(storyId, format, {
+          status: "finished",
+          progress: 100,
+          message: "Renderöinti valmis.",
+        });
+      } else {
+        updateRenderStatus(storyId, format, {
+          status: "failed",
+          message: "Renderöinti epäonnistui.",
+        });
+      }
     });
 
     nexrenderProcess.on("error", (error) => {
+      updateRenderStatus(storyId, format, {
+        status: "failed",
+        message: "Nexrenderin käynnistys epäonnistui.",
+      });
+
       console.error(`[nexrender ${format}] käynnistys epäonnistui:`, error);
     });
   });
 
   prepareProcess.on("error", (error) => {
+    updateRenderStatus(storyId, format, {
+      status: "failed",
+      progress: 0,
+      message: "Valmisteluskriptin käynnistys epäonnistui.",
+    });
+
     console.error(`[${scriptName}] käynnistys epäonnistui:`, error);
   });
 }
-
-app.get("/api/health", (req, res) => {
-  res.json({
-    status: "ok",
-    message: "Tarinakioskin paikallinen API toimii.",
-  });
-});
 
 app.post(
   "/api/stories",
@@ -178,37 +367,51 @@ app.post(
     { name: "storyVideo", maxCount: 1 },
   ]),
   (req, res) => {
+    let files;
+
     try {
-      const files = req.files;
+      files = req.files;
 
       const backgroundImageFile = files?.backgroundImage?.[0];
       const storyVideoFile = files?.storyVideo?.[0];
 
       if (!backgroundImageFile || !storyVideoFile) {
+        cleanupUploadedFiles(files);
+
         return res.status(400).json({
+          ok: false,
           status: "error",
-          message: "Taustakuva tai video puuttuu.",
+          error: "Taustakuva tai video puuttuu.",
         });
       }
 
-      const title = req.body.title ?? "";
-      const author = req.body.author ?? "";
-      const date = req.body.date ?? "";
+      const title = String(req.body.title ?? "").trim();
+      const author = String(req.body.author ?? "").trim();
+      const date = String(req.body.date ?? "").trim();
 
-      let renderFormats = [];
+      if (!title || !author || !date) {
+        cleanupUploadedFiles(files);
 
-      try {
-        renderFormats = req.body.renderFormats
-          ? JSON.parse(req.body.renderFormats)
-          : [];
-      } catch {
-        renderFormats = [];
+        return res.status(400).json({
+          ok: false,
+          status: "error",
+          error: "Tarinan otsikko, kertojan nimi tai päivämäärä puuttuu.",
+        });
       }
 
-      const storyId = getNextStoryId();
-      const storyDir = path.join(config.inputRootDir, storyId);
+      const renderFormats = parseRenderFormats(req.body.renderFormats);
 
-      fs.mkdirSync(storyDir, { recursive: true });
+      if (renderFormats.length === 0) {
+        cleanupUploadedFiles(files);
+
+        return res.status(400).json({
+          ok: false,
+          status: "error",
+          error: "Valitse ainakin yksi luotava video.",
+        });
+      }
+
+      const { storyId, storyDir } = createStoryDir();
 
       const imageExtension =
         getFileExtension(backgroundImageFile.originalname) || ".jpg";
@@ -236,6 +439,8 @@ app.post(
         "utf-8",
       );
 
+      initializeRenderStatus(storyId, renderFormats);
+
       const startedJobs = [];
 
       if (renderFormats.includes("insta")) {
@@ -262,7 +467,8 @@ app.post(
         metadataPath,
       });
 
-      res.json({
+      return res.status(201).json({
+        ok: true,
         status: "ok",
         message: "Tarina tallennettu ja renderöinnit käynnistetty.",
         storyId,
@@ -272,18 +478,39 @@ app.post(
         metadata,
       });
     } catch (error) {
+      cleanupUploadedFiles(files);
+
       console.error(
         "Virhe tarinan tallennuksessa tai renderöinnin käynnistyksessä:",
         error,
       );
 
-      res.status(500).json({
+      return res.status(500).json({
+        ok: false,
         status: "error",
-        message: "Tarinan tallennus tai renderöinnin käynnistys epäonnistui.",
+        error: "Tarinan tallennus tai renderöinnin käynnistys epäonnistui.",
       });
     }
   },
 );
+
+app.get("/api/stories/:storyId/status", (req, res) => {
+  const progress = getRenderStatusResponse(req.params.storyId);
+
+  if (!progress) {
+    return res.status(404).json({
+      ok: false,
+      status: "error",
+      error: "Renderöinnin etenemistietoja ei löytynyt.",
+    });
+  }
+
+  return res.json({
+    ok: true,
+    status: "ok",
+    ...progress,
+  });
+});
 
 app.listen(port, () => {
   console.log(`Tarinakioski API käynnissä: http://localhost:${port}`);

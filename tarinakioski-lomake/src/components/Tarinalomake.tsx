@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -23,12 +23,55 @@ type SubmittedStory = {
   metadataJson: StoryMetadata;
 };
 
+type ApproveResult = {
+  ok?: boolean;
+  storyId?: string;
+  startedJobs?: RenderFormat[];
+  error?: string;
+};
+
+type RenderJobStatus =
+  | "queued"
+  | "preparing"
+  | "rendering"
+  | "finished"
+  | "failed";
+
+type RenderJobProgress = {
+  format: RenderFormat;
+  status: RenderJobStatus;
+  progress: number;
+  message?: string;
+};
+
+type RenderStatusResponse = {
+  ok?: boolean;
+  status?: string;
+  storyId?: string;
+  jobs?: unknown;
+  error?: string;
+};
+
 function getTodayDate() {
   const today = new Date();
   const timezoneOffset = today.getTimezoneOffset();
   const localDate = new Date(today.getTime() - timezoneOffset * 60 * 1000);
 
   return localDate.toISOString().split("T")[0];
+}
+
+function isRenderFormat(value: unknown): value is RenderFormat {
+  return value === "insta" || value === "hd";
+}
+
+function isRenderJobStatus(value: unknown): value is RenderJobStatus {
+  return (
+    value === "queued" ||
+    value === "preparing" ||
+    value === "rendering" ||
+    value === "finished" ||
+    value === "failed"
+  );
 }
 
 function getRenderFormatLabel(format: RenderFormat) {
@@ -39,6 +82,34 @@ function getRenderFormatLabel(format: RenderFormat) {
   return "HD-video";
 }
 
+function getRenderJobStatusLabel(status: RenderJobStatus) {
+  if (status === "queued") {
+    return "Odottaa";
+  }
+
+  if (status === "preparing") {
+    return "Valmistellaan";
+  }
+
+  if (status === "rendering") {
+    return "Renderöidään";
+  }
+
+  if (status === "finished") {
+    return "Valmis";
+  }
+
+  return "Epäonnistui";
+}
+
+function getStartedJobsText(startedJobs: RenderFormat[] | undefined) {
+  if (!startedJobs || startedJobs.length === 0) {
+    return "ei renderöintejä";
+  }
+
+  return startedJobs.map((format) => getRenderFormatLabel(format)).join(", ");
+}
+
 function isImageFile(file: File) {
   return file.type.startsWith("image/");
 }
@@ -47,14 +118,159 @@ function isVideoFile(file: File) {
   return file.type.startsWith("video/");
 }
 
+function clampProgress(progress: number) {
+  return Math.max(0, Math.min(100, progress));
+}
+
+function normalizeRenderProgressJobs(jobs: unknown): RenderJobProgress[] {
+  if (!Array.isArray(jobs)) {
+    return [];
+  }
+
+  const normalizedJobs: RenderJobProgress[] = [];
+
+  jobs.forEach((job) => {
+    if (!job || typeof job !== "object") {
+      return;
+    }
+
+    const item = job as {
+      format?: unknown;
+      status?: unknown;
+      progress?: unknown;
+      message?: unknown;
+    };
+
+    if (!isRenderFormat(item.format) || !isRenderJobStatus(item.status)) {
+      return;
+    }
+
+    const rawProgress =
+      typeof item.progress === "number" ? item.progress : Number(item.progress);
+
+    const progress = Number.isFinite(rawProgress)
+      ? clampProgress(rawProgress)
+      : 0;
+
+    const normalizedJob: RenderJobProgress = {
+      format: item.format,
+      status: item.status,
+      progress,
+    };
+
+    if (typeof item.message === "string" && item.message.length > 0) {
+      normalizedJob.message = item.message;
+    }
+
+    normalizedJobs.push(normalizedJob);
+  });
+
+  return normalizedJobs;
+}
+
+function normalizeStartedJobs(startedJobs: unknown): RenderFormat[] {
+  if (!Array.isArray(startedJobs)) {
+    return [];
+  }
+
+  return startedJobs.filter(isRenderFormat);
+}
+
 export default function Tarinalomake() {
   const formRef = useRef<HTMLFormElement>(null);
+
   const [submittedStory, setSubmittedStory] = useState<SubmittedStory | null>(
     null,
   );
 
+  const [isApproving, setIsApproving] = useState(false);
+  const [approveResult, setApproveResult] = useState<ApproveResult | null>(
+    null,
+  );
+  const [approveError, setApproveError] = useState("");
+
+  const [renderProgress, setRenderProgress] = useState<RenderJobProgress[]>([]);
+  const [progressError, setProgressError] = useState("");
+
+  useEffect(() => {
+    const storyId = approveResult?.storyId;
+
+    if (!storyId) {
+      return;
+    }
+
+    let intervalId: number | undefined;
+    let isCancelled = false;
+
+    async function fetchProgress() {
+      try {
+        const response = await fetch(`/api/stories/${storyId}/status`);
+
+        let result: RenderStatusResponse = {};
+
+        try {
+          result = (await response.json()) as RenderStatusResponse;
+        } catch {
+          result = {};
+        }
+
+        if (!response.ok) {
+          throw new Error(
+            result.error || "Renderöinnin etenemistiedon haku epäonnistui.",
+          );
+        }
+
+        const jobs = normalizeRenderProgressJobs(result.jobs);
+
+        if (isCancelled) {
+          return;
+        }
+
+        setRenderProgress(jobs);
+        setProgressError("");
+
+        const allDone =
+          jobs.length > 0 &&
+          jobs.every(
+            (job) => job.status === "finished" || job.status === "failed",
+          );
+
+        if (allDone && intervalId) {
+          window.clearInterval(intervalId);
+        }
+      } catch (error: unknown) {
+        if (isCancelled) {
+          return;
+        }
+
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Renderöinnin etenemistiedon haku epäonnistui.";
+
+        setProgressError(message);
+      }
+    }
+
+    fetchProgress();
+    intervalId = window.setInterval(fetchProgress, 2000);
+
+    return () => {
+      isCancelled = true;
+
+      if (intervalId) {
+        window.clearInterval(intervalId);
+      }
+    };
+  }, [approveResult?.storyId]);
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    setApproveResult(null);
+    setApproveError("");
+    setRenderProgress([]);
+    setProgressError("");
 
     const formData = new FormData(event.currentTarget);
 
@@ -91,14 +307,14 @@ export default function Tarinalomake() {
       return;
     }
 
-    const author = String(formData.get("authorName") ?? "");
-    const title = String(formData.get("title") ?? "");
-    const date = String(formData.get("date") ?? "");
+    const author = String(formData.get("authorName") ?? "").trim();
+    const title = String(formData.get("title") ?? "").trim();
+    const date = String(formData.get("date") ?? "").trim();
 
     const renderFormats: RenderFormat[] = [
       renderInsta ? "insta" : null,
       renderHd ? "hd" : null,
-    ].filter(Boolean) as RenderFormat[];
+    ].filter(isRenderFormat);
 
     const metadataJson: StoryMetadata = {
       title,
@@ -125,12 +341,26 @@ export default function Tarinalomake() {
 
   function handleEdit() {
     setSubmittedStory(null);
+    setApproveResult(null);
+    setApproveError("");
+    setRenderProgress([]);
+    setProgressError("");
   }
 
   async function handleApprove() {
+    if (isApproving || approveResult) {
+      return;
+    }
+
     if (!submittedStory || !formRef.current) {
       return;
     }
+
+    setIsApproving(true);
+    setApproveResult(null);
+    setApproveError("");
+    setRenderProgress([]);
+    setProgressError("");
 
     const formData = new FormData(formRef.current);
 
@@ -148,33 +378,54 @@ export default function Tarinalomake() {
         body: formData,
       });
 
-      if (!response.ok) {
-        throw new Error("API-kutsu epäonnistui.");
+      let result: ApproveResult = {};
+
+      try {
+        result = (await response.json()) as ApproveResult;
+      } catch {
+        result = {};
       }
 
-      const result = await response.json();
+      result.startedJobs = normalizeStartedJobs(result.startedJobs);
+
+      if (!response.ok) {
+        throw new Error(result.error || "API-kutsu epäonnistui.");
+      }
 
       console.log("API:n vastaus:", result);
 
-      const startedJobsText =
-        result.startedJobs?.length > 0
-          ? result.startedJobs.join(", ")
-          : "ei renderöintejä";
+      setApproveResult(result);
 
-      alert(
-        `Tarina tallennettu tunnuksella ${result.storyId}. Käynnistetyt renderöinnit: ${startedJobsText}.`,
+      setRenderProgress(
+        result.startedJobs.map((format) => ({
+          format,
+          status: "queued",
+          progress: 0,
+          message: "Renderöinti jonossa.",
+        })),
       );
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("Virhe tietojen lähettämisessä:", error);
-      alert(
-        "Tietojen lähettäminen epäonnistui. Tarkista, että API on käynnissä.",
-      );
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Tietojen lähettäminen epäonnistui. Tarkista, että API on käynnissä.";
+
+      setApproveError(message);
+    } finally {
+      setIsApproving(false);
     }
   }
 
   function handleClear() {
     formRef.current?.reset();
     setSubmittedStory(null);
+    setApproveResult(null);
+    setApproveError("");
+    setRenderProgress([]);
+    setProgressError("");
+    setIsApproving(false);
   }
 
   return (
@@ -320,18 +571,118 @@ export default function Tarinalomake() {
             </dl>
 
             <div className="mt-4 grid gap-3 md:grid-cols-3">
-              <Button type="button" onClick={handleApprove}>
-                Hyväksy ja luo videot
+              <Button
+                type="button"
+                onClick={handleApprove}
+                disabled={isApproving || Boolean(approveResult)}
+                className="bg-blue-600 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+              >
+                {isApproving
+                  ? "Videoita luodaan..."
+                  : approveResult
+                    ? "Hyväksytty"
+                    : "Hyväksy ja luo videot"}
               </Button>
 
-              <Button type="button" variant="outline" onClick={handleEdit}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleEdit}
+                disabled={isApproving}
+              >
                 Muokkaa tietoja
               </Button>
 
-              <Button type="button" variant="outline" onClick={handleClear}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleClear}
+                disabled={isApproving}
+              >
                 Tyhjennä
               </Button>
             </div>
+
+            {isApproving && (
+              <div className="mt-3 rounded border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-900">
+                Tallennetaan tarinaa ja käynnistetään renderöintiä. Tämä voi
+                kestää hetken. Älä sulje ikkunaa.
+              </div>
+            )}
+
+            {approveResult && (
+              <div className="mt-3 rounded border border-green-200 bg-green-50 p-3 text-sm text-green-900">
+                <p className="font-semibold">
+                  Tarina tallennettu onnistuneesti.
+                </p>
+
+                <p>
+                  Tarinan numero:{" "}
+                  <strong>{approveResult.storyId || "ei tunnusta"}</strong>
+                </p>
+
+                <p>
+                  Käynnistetyt renderöinnit:{" "}
+                  <strong>
+                    {getStartedJobsText(approveResult.startedJobs)}
+                  </strong>
+                </p>
+              </div>
+            )}
+
+            {renderProgress.length > 0 && (
+              <div className="mt-3 rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+                <p className="font-semibold">Renderöinnin eteneminen</p>
+
+                <div className="mt-3 space-y-3">
+                  {renderProgress.map((job) => {
+                    const progress = Math.round(job.progress ?? 0);
+
+                    return (
+                      <div key={job.format}>
+                        <div className="mb-1 flex items-center justify-between gap-3">
+                          <span className="font-medium">
+                            {getRenderFormatLabel(job.format)}
+                          </span>
+
+                          <span>
+                            {getRenderJobStatusLabel(job.status)} {progress} %
+                          </span>
+                        </div>
+
+                        <div className="h-3 overflow-hidden rounded-full bg-slate-200">
+                          <div
+                            className="h-full rounded-full bg-blue-600 transition-all"
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
+
+                        {job.message && (
+                          <p className="mt-1 text-xs text-blue-800">
+                            {job.message}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {progressError && (
+              <div className="mt-3 rounded border border-orange-200 bg-orange-50 p-3 text-sm text-orange-900">
+                Renderöinnin etenemistietoa ei saatu haettua: {progressError}
+              </div>
+            )}
+
+            {approveError && (
+              <div className="mt-3 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+                <p className="font-semibold">
+                  Tietojen lähettäminen epäonnistui.
+                </p>
+                <p>{approveError}</p>
+              </div>
+            )}
           </section>
         )}
       </form>
