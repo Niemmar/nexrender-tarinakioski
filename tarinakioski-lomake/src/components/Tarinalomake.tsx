@@ -1,180 +1,29 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-type RenderFormat = "insta" | "hd";
+import { useRenderProgress } from "@/features/tarinalomake/useRenderProgress";
 
-type StoryMetadata = {
-  title: string;
-  author: string;
-  date: string;
-};
+import type {
+  ApproveResult,
+  RenderFormat,
+  StoryMetadata,
+  SubmittedStory,
+} from "@/features/tarinalomake/types";
 
-type SubmittedStory = {
-  title: string;
-  author: string;
-  date: string;
-  backgroundImage: string;
-  storyVideo: string;
-  renderFormats: RenderFormat[];
-  metadataJson: StoryMetadata;
-};
-
-type ApproveResult = {
-  ok?: boolean;
-  storyId?: string;
-  startedJobs?: RenderFormat[];
-  error?: string;
-};
-
-type RenderJobStatus =
-  | "queued"
-  | "preparing"
-  | "rendering"
-  | "finished"
-  | "failed";
-
-type RenderJobProgress = {
-  format: RenderFormat;
-  status: RenderJobStatus;
-  progress: number;
-  message?: string;
-};
-
-type RenderStatusResponse = {
-  ok?: boolean;
-  status?: string;
-  storyId?: string;
-  jobs?: unknown;
-  error?: string;
-};
-
-function getTodayDate() {
-  const today = new Date();
-  const timezoneOffset = today.getTimezoneOffset();
-  const localDate = new Date(today.getTime() - timezoneOffset * 60 * 1000);
-
-  return localDate.toISOString().split("T")[0];
-}
-
-function isRenderFormat(value: unknown): value is RenderFormat {
-  return value === "insta" || value === "hd";
-}
-
-function isRenderJobStatus(value: unknown): value is RenderJobStatus {
-  return (
-    value === "queued" ||
-    value === "preparing" ||
-    value === "rendering" ||
-    value === "finished" ||
-    value === "failed"
-  );
-}
-
-function getRenderFormatLabel(format: RenderFormat) {
-  if (format === "insta") {
-    return "Instagram-video";
-  }
-
-  return "HD-video";
-}
-
-function getRenderJobStatusLabel(status: RenderJobStatus) {
-  if (status === "queued") {
-    return "Odottaa";
-  }
-
-  if (status === "preparing") {
-    return "Valmistellaan";
-  }
-
-  if (status === "rendering") {
-    return "Renderöidään";
-  }
-
-  if (status === "finished") {
-    return "Valmis";
-  }
-
-  return "Epäonnistui";
-}
-
-function getStartedJobsText(startedJobs: RenderFormat[] | undefined) {
-  if (!startedJobs || startedJobs.length === 0) {
-    return "ei renderöintejä";
-  }
-
-  return startedJobs.map((format) => getRenderFormatLabel(format)).join(", ");
-}
-
-function isImageFile(file: File) {
-  return file.type.startsWith("image/");
-}
-
-function isVideoFile(file: File) {
-  return file.type.startsWith("video/");
-}
-
-function clampProgress(progress: number) {
-  return Math.max(0, Math.min(100, progress));
-}
-
-function normalizeRenderProgressJobs(jobs: unknown): RenderJobProgress[] {
-  if (!Array.isArray(jobs)) {
-    return [];
-  }
-
-  const normalizedJobs: RenderJobProgress[] = [];
-
-  jobs.forEach((job) => {
-    if (!job || typeof job !== "object") {
-      return;
-    }
-
-    const item = job as {
-      format?: unknown;
-      status?: unknown;
-      progress?: unknown;
-      message?: unknown;
-    };
-
-    if (!isRenderFormat(item.format) || !isRenderJobStatus(item.status)) {
-      return;
-    }
-
-    const rawProgress =
-      typeof item.progress === "number" ? item.progress : Number(item.progress);
-
-    const progress = Number.isFinite(rawProgress)
-      ? clampProgress(rawProgress)
-      : 0;
-
-    const normalizedJob: RenderJobProgress = {
-      format: item.format,
-      status: item.status,
-      progress,
-    };
-
-    if (typeof item.message === "string" && item.message.length > 0) {
-      normalizedJob.message = item.message;
-    }
-
-    normalizedJobs.push(normalizedJob);
-  });
-
-  return normalizedJobs;
-}
-
-function normalizeStartedJobs(startedJobs: unknown): RenderFormat[] {
-  if (!Array.isArray(startedJobs)) {
-    return [];
-  }
-
-  return startedJobs.filter(isRenderFormat);
-}
+import {
+  getRenderFormatLabel,
+  getRenderJobStatusLabel,
+  getStartedJobsText,
+  getTodayDate,
+  isImageFile,
+  isRenderFormat,
+  isVideoFile,
+  normalizeStartedJobs,
+} from "@/features/tarinalomake/utils";
 
 export default function Tarinalomake() {
   const formRef = useRef<HTMLFormElement>(null);
@@ -189,88 +38,20 @@ export default function Tarinalomake() {
   );
   const [approveError, setApproveError] = useState("");
 
-  const [renderProgress, setRenderProgress] = useState<RenderJobProgress[]>([]);
-  const [progressError, setProgressError] = useState("");
+  const { renderProgress, progressError } = useRenderProgress(
+    approveResult?.storyId,
+    approveResult?.startedJobs,
+  );
 
-  useEffect(() => {
-    const storyId = approveResult?.storyId;
-
-    if (!storyId) {
-      return;
-    }
-
-    let intervalId: number | undefined;
-    let isCancelled = false;
-
-    async function fetchProgress() {
-      try {
-        const response = await fetch(`/api/stories/${storyId}/status`);
-
-        let result: RenderStatusResponse = {};
-
-        try {
-          result = (await response.json()) as RenderStatusResponse;
-        } catch {
-          result = {};
-        }
-
-        if (!response.ok) {
-          throw new Error(
-            result.error || "Renderöinnin etenemistiedon haku epäonnistui.",
-          );
-        }
-
-        const jobs = normalizeRenderProgressJobs(result.jobs);
-
-        if (isCancelled) {
-          return;
-        }
-
-        setRenderProgress(jobs);
-        setProgressError("");
-
-        const allDone =
-          jobs.length > 0 &&
-          jobs.every(
-            (job) => job.status === "finished" || job.status === "failed",
-          );
-
-        if (allDone && intervalId) {
-          window.clearInterval(intervalId);
-        }
-      } catch (error: unknown) {
-        if (isCancelled) {
-          return;
-        }
-
-        const message =
-          error instanceof Error
-            ? error.message
-            : "Renderöinnin etenemistiedon haku epäonnistui.";
-
-        setProgressError(message);
-      }
-    }
-
-    fetchProgress();
-    intervalId = window.setInterval(fetchProgress, 2000);
-
-    return () => {
-      isCancelled = true;
-
-      if (intervalId) {
-        window.clearInterval(intervalId);
-      }
-    };
-  }, [approveResult?.storyId]);
+  function resetApproveState() {
+    setApproveResult(null);
+    setApproveError("");
+  }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    setApproveResult(null);
-    setApproveError("");
-    setRenderProgress([]);
-    setProgressError("");
+    resetApproveState();
 
     const formData = new FormData(event.currentTarget);
 
@@ -341,10 +122,7 @@ export default function Tarinalomake() {
 
   function handleEdit() {
     setSubmittedStory(null);
-    setApproveResult(null);
-    setApproveError("");
-    setRenderProgress([]);
-    setProgressError("");
+    resetApproveState();
   }
 
   async function handleApprove() {
@@ -357,10 +135,7 @@ export default function Tarinalomake() {
     }
 
     setIsApproving(true);
-    setApproveResult(null);
-    setApproveError("");
-    setRenderProgress([]);
-    setProgressError("");
+    resetApproveState();
 
     const formData = new FormData(formRef.current);
 
@@ -395,15 +170,6 @@ export default function Tarinalomake() {
       console.log("API:n vastaus:", result);
 
       setApproveResult(result);
-
-      setRenderProgress(
-        result.startedJobs.map((format) => ({
-          format,
-          status: "queued",
-          progress: 0,
-          message: "Renderöinti jonossa.",
-        })),
-      );
     } catch (error: unknown) {
       console.error("Virhe tietojen lähettämisessä:", error);
 
@@ -421,10 +187,7 @@ export default function Tarinalomake() {
   function handleClear() {
     formRef.current?.reset();
     setSubmittedStory(null);
-    setApproveResult(null);
-    setApproveError("");
-    setRenderProgress([]);
-    setProgressError("");
+    resetApproveState();
     setIsApproving(false);
   }
 

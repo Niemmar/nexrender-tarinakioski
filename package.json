@@ -6,6 +6,8 @@
     "render": "nexrender-cli --binary \"C:\\Program Files\\Adobe\\Adobe After Effects 2026\\Support Files\\aerender.exe\" --file"
   },
   "dependencies": {
+    "@nexrender/action-copy": "^1.49.4",
+    "@nexrender/cli": "^1.63.3",
     "dotenv": "^17.4.2",
     "ffprobe-static": "^3.1.0",
     "fluent-ffmpeg": "^2.1.3",

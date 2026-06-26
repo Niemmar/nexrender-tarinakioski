@@ -196,14 +196,25 @@ function getJobFilePath(storyId, format) {
 }
 
 function getNexrenderCommand() {
-  if (
-    process.platform === "win32" &&
-    config.nexrenderCommand === "nexrender-cli"
-  ) {
-    return "nexrender-cli.cmd";
+  if (path.isAbsolute(config.nexrenderCommand)) {
+    return config.nexrenderCommand;
   }
 
-  return config.nexrenderCommand;
+  if (process.platform === "win32") {
+    return path.join(
+      config.projectRootDir,
+      "node_modules",
+      ".bin",
+      "nexrender-cli.cmd",
+    );
+  }
+
+  return path.join(
+    config.projectRootDir,
+    "node_modules",
+    ".bin",
+    "nexrender-cli",
+  );
 }
 
 function cleanupUploadedFiles(files) {
