@@ -19,6 +19,8 @@ export type SubmittedStory = {
 export type ApproveResult = {
   ok?: boolean;
   storyId?: string;
+  storyDir?: string;
+  outputDir?: string;
   startedJobs?: RenderFormat[];
   error?: string;
 };

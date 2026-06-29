@@ -400,6 +400,16 @@ app.post(
       const author = String(req.body.author ?? "").trim();
       const date = String(req.body.date ?? "").trim();
 
+      if (title.length > 50) {
+        cleanupUploadedFiles(files);
+
+        return res.status(400).json({
+          ok: false,
+          status: "error",
+          error: "Tarinan otsikko saa olla enintään 50 merkkiä.",
+        });
+      }
+
       if (!title || !author || !date) {
         cleanupUploadedFiles(files);
 
@@ -450,6 +460,8 @@ app.post(
         "utf-8",
       );
 
+      const outputDir = path.join(config.outputRootDir, storyId);
+
       initializeRenderStatus(storyId, renderFormats);
 
       const startedJobs = [];
@@ -484,6 +496,7 @@ app.post(
         message: "Tarina tallennettu ja renderöinnit käynnistetty.",
         storyId,
         storyDir,
+        outputDir,
         renderFormats,
         startedJobs,
         metadata,

@@ -4,12 +4,12 @@
 
 Tämä projekti luo Tarinakioski-videoita After Effects -templateista Nexrenderin avulla.
 
+Projektissa on paikallinen lomake, paikallinen API ja Nexrender-renderöintiputki. Käyttäjä täyttää lomakkeen, valitsee renderöitävät videot ja hyväksyy tarinan. Sen jälkeen paikallinen API tallentaa aineiston, muodostaa tarinalle id:n ja käynnistää valitut renderöinnit.
+
 Projektissa on kaksi renderöintiversiota:
 
 - Instagram-video
 - HD-video
-
-Käyttäjä täyttää paikallisen lomakkeen, valitsee renderöitävät videot ja hyväksyy tarinan. Sen jälkeen paikallinen API tallentaa aineiston, muodostaa tarinalle id:n ja käynnistää valitut renderöinnit.
 
 Renderöinnissä vaihdetaan tarinakohtaisesti:
 
@@ -18,6 +18,8 @@ Renderöinnissä vaihdetaan tarinakohtaisesti:
 - tarinan otsikko
 - kertoja
 - renderöitävät formaatit
+
+Nykyinen työnkulku ei käytä Whisperiä, automaattisia tekstityksiä eikä `STATIC_TITLE`-layeria.
 
 ---
 
@@ -46,34 +48,50 @@ Käyttäjän näkökulmasta normaali työnkulku on:
 3. valitse Instagram-video, HD-video tai molemmat
 4. tarkista tiedot
 5. paina **Hyväksy ja luo videot**
-6. valmis video syntyy `output/<id>`-kansioon
+6. seuraa renderöinnin etenemistä lomakkeella
+7. valmis video syntyy `output/<id>`-kansioon
+8. lomake näyttää lopuksi valmiin videon kansiopolun
 
 ---
 
-## Kansiorakenne
+## Projektin nykyinen rakenne
 
 ```text
 C:\nexrender-tarinakioski
 ├─ input
-│  └─ 003
+│  └─ <id>
 │     ├─ video.mov
 │     ├─ background.jpg
 │     └─ metadata.json
 ├─ output
-│  └─ 003
+│  └─ <id>
 │     ├─ job-auto-insta.json
 │     ├─ job-auto-hd.json
-│     ├─ 003_Kaisa Ahonen_Virpojaisloru_insta.mp4
-│     └─ 003_Kaisa Ahonen_Virpojaisloru_hd.mp4
+│     ├─ <id>_<author>_<title>_insta.mp4
+│     └─ <id>_<author>_<title>_hd.mp4
 ├─ templates
 │  ├─ tarinakioski_template_insta_v3.aep
 │  └─ tarinakioski_template_v6.aep
-├─ server
-│  ├─ index.js
-│  └─ config.js
 ├─ tarinakioski-lomake
+│  ├─ server
+│  │  ├─ index.js
+│  │  └─ config.js
 │  └─ src
-│     └─ Tarinalomake.tsx
+│     ├─ components
+│     │  └─ Tarinalomake.tsx
+│     └─ features
+│        └─ tarinalomake
+│           ├─ RenderCompleteMessage.tsx
+│           ├─ RenderFailedMessage.tsx
+│           ├─ RenderProgressPanel.tsx
+│           ├─ StoryFormFields.tsx
+│           ├─ StoryReview.tsx
+│           ├─ StoryStatusMessages.tsx
+│           ├─ storyApi.ts
+│           ├─ storyFormData.ts
+│           ├─ types.ts
+│           ├─ useRenderProgress.ts
+│           └─ utils.ts
 ├─ prepare-story-insta-render.js
 ├─ prepare-story-hd-render.js
 ├─ job-template-insta.json
@@ -124,7 +142,7 @@ Puhujan video tallennetaan nimellä:
 video.mov
 ```
 
-Nykyinen työnkulku käyttää MOV-videota, jotta taustattoman videon alpha eli läpinäkyvyys säilyy. Videossa tulee olla tausta valmiiksi poistettuna ennen renderöintiä. Tässä työssä se on tehty Adobe After Effects Rotobrush-työkalulla.
+Nykyinen suositeltu työnkulku käyttää MOV-videota, jotta taustattoman videon alpha eli läpinäkyvyys säilyy. Videossa tulee olla tausta valmiiksi poistettuna ennen renderöintiä. Tässä työssä taustanpoisto on tehty Adobe After Effects Rotobrush -työkalulla.
 
 ### background.jpg
 
@@ -154,32 +172,42 @@ Esimerkki:
   "id": "003",
   "title": "Virpojaisloru",
   "author": "Kaisa Ahonen",
-  "renderFormats": ["insta", "hd"]
+  "date": "2026-06-26"
 }
 ```
 
 Kentät:
 
 ```text
-id              Tarinan tunniste
-title           Tarinan otsikko
-author          Tarinan kertoja
-renderFormats   Renderöitävät formaatit
+id      Tarinan tunniste
+title   Tarinan otsikko
+author  Tarinan kertoja
+date    Päivämäärä
 ```
 
-`renderFormats` voi olla esimerkiksi:
+---
 
-```json
-["insta"]
+## Output-kansio
+
+Renderöinnin tulokset syntyvät `output/<id>`-kansioon.
+
+Esimerkki:
+
+```text
+output/003/
+  job-auto-insta.json
+  job-auto-hd.json
+  003_Kaisa Ahonen_Virpojaisloru_insta.mp4
+  003_Kaisa Ahonen_Virpojaisloru_hd.mp4
 ```
 
-```json
-["hd"]
+Lomake näyttää renderöinnin valmistuttua käyttäjälle valmiin videon kansiopolun, esimerkiksi:
+
+```text
+C:\nexrender-tarinakioski\output\003
 ```
 
-```json
-["insta", "hd"]
-```
+Tämä on nykyisessä demossa paikallisen kehityskoneen polku. Museon koneella vastaava polku määrittyy käytettävän asennuskansion mukaan.
 
 ---
 
@@ -203,6 +231,19 @@ Lomakkeella näkyvät muun muassa:
 Uusi tarina
 Syötä tarinan perustiedot ja valitse, mitkä videot luodaan.
 ```
+
+Kentät:
+
+```text
+Nimi
+Tarinan otsikko
+Päivämäärä
+Taustakuva
+Video
+Luotavat videot
+```
+
+Otsikon maksimipituus on 50 merkkiä. Tämä helpottaa tekstin asettelua After Effects -templateissa.
 
 Renderöintivalinnat:
 
@@ -237,17 +278,60 @@ Tyhjennä
 
 `Hyväksy ja luo videot` lähettää tiedot paikalliselle API:lle ja käynnistää tallennus- ja renderöintiputken.
 
+Hyväksymisen jälkeen:
+
+- painike lukittuu
+- lomake näyttää, että videoita luodaan
+- tuplaklikkaus estetään
+- käyttäjälle näytetään tarinan numero
+- käyttäjälle näytetään käynnistetyt renderöinnit
+- käyttäjälle näytetään renderöinnin eteneminen prosentteina
+- valmistumisen jälkeen käyttäjälle näytetään output-kansion polku
+- käyttäjä voi aloittaa uuden tarinan painikkeella **Aloita uusi tarina**
+
 ---
 
-## Paikallinen API
+## Frontendin rakenne
 
-Paikallinen API sijaitsee `server`-kansiossa.
+Lomakkeen pääkomponentti:
+
+```text
+tarinakioski-lomake/src/components/Tarinalomake.tsx
+```
+
+Pääkomponentti ohjaa lomakkeen tilaa ja käyttäjän etenemistä.
+
+Lomakkeen osat on refaktoroitu pienempiin tiedostoihin:
+
+```text
+tarinakioski-lomake/src/features/tarinalomake/
+```
 
 Tärkeimmät tiedostot:
 
 ```text
-server/index.js
-server/config.js
+StoryFormFields.tsx        Ensimmäisen vaiheen lomakekentät
+StoryReview.tsx            Tarkistusnäkymä
+StoryStatusMessages.tsx    Tallennus-, onnistumis- ja virheviestit
+RenderProgressPanel.tsx    Renderöinnin etenemispalkki
+RenderCompleteMessage.tsx  Valmisnäkymä ja output-kansiopolku
+RenderFailedMessage.tsx    Renderöinnin epäonnistumisilmoitus
+useRenderProgress.ts       Renderöinnin etenemistiedon haku API:lta
+storyApi.ts                Frontendin API-kutsu
+storyFormData.ts           Lomakedatan lukeminen ja validointi
+types.ts                   Yhteiset TypeScript-tyypit
+utils.ts                   Yhteiset apufunktiot
+```
+
+---
+
+## Paikallinen API
+
+Paikallinen API sijaitsee lomakeprojektin `server`-kansiossa:
+
+```text
+tarinakioski-lomake/server/index.js
+tarinakioski-lomake/server/config.js
 ```
 
 API vastaanottaa lomakkeen lähettämän `FormData`-datan.
@@ -260,14 +344,46 @@ API tekee seuraavat asiat:
 4. tallentaa videon nimellä `video.mov`
 5. tallentaa taustakuvan `background`-nimellä
 6. kirjoittaa `metadata.json`-tiedoston
-7. ajaa valittujen formaattien prepare-skriptit
-8. käynnistää Nexrender-renderöinnin
+7. alustaa renderöinnin tilatiedon
+8. ajaa valittujen formaattien prepare-skriptit
+9. käynnistää Nexrender-renderöinnin
+10. välittää renderöinnin etenemistiedon frontendille
 
 Konekohtaiset polut määritellään tiedostossa:
 
 ```text
-server/config.js
+tarinakioski-lomake/server/config.js
 ```
+
+API:n terveystarkistuksen voi avata selaimessa:
+
+```text
+http://localhost:3001/api/health
+```
+
+---
+
+## Renderöinnin etenemistieto
+
+Nexrender tulostaa renderöinnin etenemistä API:n konsoliin. API lukee näitä lokirivejä ja tallentaa etenemistiedon paikalliseen muistiin.
+
+Frontend kysyy etenemistietoa API:lta noin kahden sekunnin välein.
+
+Etenemistiedon endpoint:
+
+```text
+GET /api/stories/:storyId/status
+```
+
+Lomakkeella käyttäjä näkee esimerkiksi:
+
+```text
+Renderöinnin eteneminen
+Instagram-video
+Renderöidään 47 %
+```
+
+Jos renderöinti epäonnistuu, käyttäjä näkee virheilmoituksen lomakkeella. Tarkempi tekninen virhe näkyy API:n PowerShell-ikkunassa.
 
 ---
 
@@ -303,8 +419,6 @@ BACKGROUND_PHOTO    Taustakuva
 STORY_TITLE         Tarinan otsikko
 STORY_AUTHOR        Tarinan kertoja
 ```
-
-Nykyinen työnkulku ei käytä Whisperiä, automaattisia tekstityksiä eikä `STATIC_TITLE`-layeria.
 
 ---
 
@@ -372,8 +486,8 @@ Nykyiset perusasetukset:
 
 ```text
 Alkutekstit: 7 sekuntia
-Instagram-videon maksimikesto 4 minuuttia
-HD-videon maksimikesto 10 minuuttia
+Instagram-videon maksimikesto: 4 minuuttia
+HD-videon maksimikesto: 10 minuuttia
 FPS: 25
 ```
 
@@ -386,34 +500,57 @@ FPS: 25
 Projektin juuressa:
 
 ```powershell
-npm install
+cd C:\nexrender-tarinakioski
+npm install --ignore-scripts
 ```
+
+`--ignore-scripts` estää npm:ää ajamasta mahdollisia asennuksen aikaisia skriptejä vahingossa.
 
 Lomakekansiossa:
 
 ```powershell
-cd tarinakioski-lomake
+cd C:\nexrender-tarinakioski\tarinakioski-lomake
 npm install
 ```
 
 ### 2. Käynnistä paikallinen API
 
-Projektin juuressa:
+Lomakekansiossa:
 
 ```powershell
-node server/index.js
+cd C:\nexrender-tarinakioski\tarinakioski-lomake
+npm run api
 ```
 
-Jos palvelimelle on lisätty oma npm-scripti, käytä sitä.
+API käynnistyy osoitteeseen:
+
+```text
+http://localhost:3001
+```
 
 ### 3. Käynnistä lomake
 
+Avaa toinen PowerShell-ikkuna ja aja:
+
 ```powershell
-cd tarinakioski-lomake
+cd C:\nexrender-tarinakioski\tarinakioski-lomake
 npm run dev
 ```
 
 Avaa selaimessa Viten ilmoittama paikallinen osoite.
+
+Tyypillisesti osoite on esimerkiksi:
+
+```text
+http://localhost:5173
+```
+
+Normaalissa kehityskäytössä ajetaan siis yhtä aikaa:
+
+```text
+npm run api
+npm run dev
+```
 
 ---
 
@@ -423,44 +560,36 @@ Normaalisti renderöinti käynnistyy lomakkeelta, mutta renderöintejä voi ajaa
 
 ### Instagram
 
+Projektin juuressa:
+
 ```powershell
-npm run prepare:insta -- 003
-npm run render -- output/003/job-auto-insta.json
+node prepare-story-insta-render.js 003
+.\node_modules\.bin\nexrender-cli.cmd --file output/003/job-auto-insta.json
 ```
 
 ### HD
 
-```powershell
-npm run prepare:hd -- 003
-npm run render -- output/003/job-auto-hd.json
-```
-
-### Molemmat
+Projektin juuressa:
 
 ```powershell
-npm run prepare:insta -- 003
-npm run render -- output/003/job-auto-insta.json
-
-npm run prepare:hd -- 003
-npm run render -- output/003/job-auto-hd.json
+node prepare-story-hd-render.js 003
+.\node_modules\.bin\nexrender-cli.cmd --file output/003/job-auto-hd.json
 ```
+
+Jos After Effectsin `aerender.exe`-polku pitää antaa erikseen, se voidaan antaa Nexrender-komennolle `--binary`-parametrilla tai määrittää API:n asetuksiin.
 
 ---
 
 ## Vaatimukset
 
 - Adobe After Effects 2026
-- Node.js
+- Node.js 20.19+ tai uudempi
+- paikallinen React/Vite-lomake
+- paikallinen Express/Multer-API
 - Nexrender CLI
 - FFmpeg / ffprobe
-- paikallinen React-lomake
-- paikallinen Express/Multer-API
 
-Nexrender CLI:n ja copy-actionin voi asentaa globaalisti:
-
-```powershell
-npm install -g @nexrender/cli @nexrender/action-copy
-```
+Nykyisessä kehitysympäristössä käytössä on ollut Node 24.16.0.
 
 After Effectsin renderöijän polku määritellään projektin asetuksissa.
 
@@ -469,3 +598,37 @@ Nykyisellä kehityskoneella polku on ollut:
 ```text
 C:\Program Files\Adobe\Adobe After Effects 2026\Support Files\aerender.exe
 ```
+
+---
+
+## Nexrender
+
+Nexrender CLI ja copy-action asennetaan projektin juureen paikallisiksi riippuvuuksiksi:
+
+```powershell
+cd C:\nexrender-tarinakioski
+npm install --ignore-scripts @nexrender/cli @nexrender/action-copy
+```
+
+Paikallinen API käyttää Nexrenderiä projektin omasta `node_modules`-kansiosta:
+
+```text
+C:\nexrender-tarinakioski\node_modules\.bin\nexrender-cli.cmd
+```
+
+Tämä on vakaampi ratkaisu kuin globaali `nexrender-cli`, koska renderöinti ei riipu siitä, mikä Node-versio tai globaali npm-polku on aktiivisena.
+
+## Huomio museokäytöstä
+
+Tämä on paikallisesti toimiva demo- ja kehitysversio Tarinakioskista.
+
+Museon koneella tavoite olisi, että käyttäjän ei tarvitse käynnistää komentoriviltä erikseen API:a ja lomaketta, vaan kokonaisuus käynnistyisi esimerkiksi työpöydän pikakuvakkeesta.
+
+Tällä hetkellä kehityskäytössä API ja lomake käynnistetään erikseen:
+
+```text
+npm run api
+npm run dev
+```
+
+Myöhemmin nämä voidaan yhdistää museokoneelle sopivaksi käynnistystavaksi.
