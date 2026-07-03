@@ -1,24 +1,47 @@
-# Node
-node_modules/
+# Logs
+logs/
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Node dependencies
+node_modules/
 
 # Frontend build outputs
 dist/
+dist-ssr/
 build/
 
-# Python / Whisper virtual environment
+# Local environment files
+*.local
+.env
+.env.*
+!.env.example
+
+# Python / virtual environments
+.venv/
 .venv-whisper/
+tools/taustanpoisto/.venv/
 __pycache__/
 *.pyc
-
-# Local media assets
-assets/
 
 # Local form uploads / temporary browser uploads
 uploads/
 tarinakioski-lomake/uploads/
+
+# Taustanpoiston paikalliset testi- ja export-tiedostot
+tools/taustanpoisto/export/
+tools/taustanpoisto/*.mp4
+tools/taustanpoisto/*.mov
+tools/taustanpoisto/*.avi
+tools/taustanpoisto/*.mkv
+tools/taustanpoisto/*.webm
+
+# Local media assets
+assets/
 
 # Input source videos are usually too large for GitHub
 input/**/*.mov
@@ -27,6 +50,10 @@ input/**/*.avi
 input/**/*.mkv
 input/**/*.webm
 
+# Background removal / render test stories
+input/9*/
+output/9*/
+
 # Generated subtitles and temporary transcription outputs
 subtitles/
 *.srt
@@ -34,9 +61,6 @@ subtitles/
 *.ass
 *.tsv
 *.subtitles.json
-
-# Keep ordinary .txt files visible for documentation/readmes.
-# If transcript .txt files are generated later, ignore them with a narrower path.
 
 # Nexrender generated / temporary subtitle jobs
 job-*-subtitles.json
@@ -50,4 +74,11 @@ Adobe After Effects Auto-Save/
 # OS / editor
 .DS_Store
 Thumbs.db
-.vscode/
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
