@@ -88,6 +88,28 @@ export function StoryFormFields({
       </div>
 
       <div className="space-y-3 rounded-lg border p-4">
+        <p className="text-sm font-medium text-slate-900">
+          Videon esikäsittely
+        </p>
+
+        <div className="flex items-start gap-2">
+          <Checkbox id="removeBackground" name="removeBackground" />
+          <div className="space-y-1">
+            <Label
+              htmlFor="removeBackground"
+              className="cursor-pointer font-normal"
+            >
+              Poista tausta henkilövideosta
+            </Label>
+            <p className="text-xs text-slate-500">
+              Käytä tätä, jos lataat tavallisen videon, jossa tausta näkyy.
+              Valmiiksi taustatonta MOV-videota ei tarvitse käsitellä uudelleen.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-3 rounded-lg border p-4">
         <p className="text-sm font-medium text-slate-900">Luotavat videot</p>
 
         <div className="flex items-center gap-2">

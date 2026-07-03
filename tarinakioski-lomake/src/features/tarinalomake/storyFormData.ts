@@ -31,6 +31,7 @@ export function createSubmittedStoryFromFormData(
 
   const renderInsta = formData.get("renderInsta") === "on";
   const renderHd = formData.get("renderHd") === "on";
+  const removeBackground = formData.get("removeBackground") === "on";
 
   if (!renderInsta && !renderHd) {
     throw new Error(
@@ -57,6 +58,7 @@ export function createSubmittedStoryFromFormData(
     title,
     author,
     date,
+    removeBackground,
   };
 
   return {
@@ -66,6 +68,7 @@ export function createSubmittedStoryFromFormData(
     backgroundImage: imageFile.name,
     storyVideo: videoFile.name,
     renderFormats,
+    removeBackground,
     metadataJson,
   };
 }

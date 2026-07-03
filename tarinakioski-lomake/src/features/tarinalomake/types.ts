@@ -4,6 +4,7 @@ export type StoryMetadata = {
   title: string;
   author: string;
   date: string;
+  removeBackground: boolean;
 };
 
 export type SubmittedStory = {
@@ -13,6 +14,7 @@ export type SubmittedStory = {
   backgroundImage: string;
   storyVideo: string;
   renderFormats: RenderFormat[];
+  removeBackground: boolean;
   metadataJson: StoryMetadata;
 };
 
