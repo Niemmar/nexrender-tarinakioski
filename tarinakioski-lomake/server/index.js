@@ -5,6 +5,7 @@ import fs from "fs";
 import { spawn } from "child_process";
 
 import { config } from "./config.js";
+import { runBackgroundRemoval } from "./services/backgroundRemoval.js";
 
 const app = express();
 const port = 3001;
@@ -161,17 +162,35 @@ function parseRenderFormats(rawValue) {
     return [];
   }
 
-  try {
-    const parsed = JSON.parse(rawValue);
+  if (Array.isArray(rawValue)) {
+    return rawValue.filter((format) => allowedRenderFormats.includes(format));
+  }
 
-    if (!Array.isArray(parsed)) {
-      return [];
+  const value = String(rawValue).trim();
+
+  try {
+    const parsed = JSON.parse(value);
+
+    if (Array.isArray(parsed)) {
+      return parsed.filter((format) => allowedRenderFormats.includes(format));
     }
 
-    return parsed.filter((format) => allowedRenderFormats.includes(format));
+    if (allowedRenderFormats.includes(parsed)) {
+      return [parsed];
+    }
   } catch {
-    return [];
+    // Jatketaan varamuotoihin.
   }
+
+  const cleanedValue = value
+    .replace(/^\[/, "")
+    .replace(/\]$/, "")
+    .replace(/["']/g, "");
+
+  return cleanedValue
+    .split(",")
+    .map((format) => format.trim())
+    .filter((format) => allowedRenderFormats.includes(format));
 }
 
 function getJobFilePath(storyId, format) {
@@ -233,6 +252,64 @@ function cleanupUploadedFiles(files) {
       }
     }
   });
+}
+
+function parseBooleanFormValue(rawValue) {
+  return rawValue === true || rawValue === "true" || rawValue === "1";
+}
+
+function updateRenderStatuses(storyId, formats, patch) {
+  formats.forEach((format) => {
+    updateRenderStatus(storyId, format, patch);
+  });
+}
+
+function startStoryPipeline({
+  storyId,
+  renderFormats,
+  removeBackground,
+  originalVideoPath,
+  finalVideoPath,
+}) {
+  (async () => {
+    try {
+      if (removeBackground) {
+        updateRenderStatuses(storyId, renderFormats, {
+          status: "preparing",
+          progress: 0,
+          message: "Poistetaan videon taustaa ennen renderöintiä.",
+        });
+
+        await runBackgroundRemoval({
+          inputPath: originalVideoPath,
+          outputPath: finalVideoPath,
+          config,
+        });
+
+        updateRenderStatuses(storyId, renderFormats, {
+          status: "queued",
+          progress: 0,
+          message: "Taustanpoisto valmis. Renderöinti odottaa käynnistystä.",
+        });
+      }
+
+      if (renderFormats.includes("insta")) {
+        startRenderProcess(config.renderScripts.insta, storyId, "insta");
+      }
+
+      if (renderFormats.includes("hd")) {
+        startRenderProcess(config.renderScripts.hd, storyId, "hd");
+      }
+    } catch (error) {
+      console.error("Taustanpoisto tai renderöintiputki epäonnistui:", error);
+
+      updateRenderStatuses(storyId, renderFormats, {
+        status: "failed",
+        progress: 0,
+        message: "Taustanpoisto tai renderöinnin käynnistys epäonnistui.",
+      });
+    }
+  })();
 }
 
 function startRenderProcess(scriptName, storyId, format) {
@@ -434,22 +511,41 @@ app.post(
 
       const { storyId, storyDir } = createStoryDir();
 
+      const removeBackground = parseBooleanFormValue(req.body.removeBackground);
+
       const imageExtension =
         getFileExtension(backgroundImageFile.originalname) || ".jpg";
       const videoExtension =
         getFileExtension(storyVideoFile.originalname) || ".mov";
 
       const finalImagePath = path.join(storyDir, `background${imageExtension}`);
-      const finalVideoPath = path.join(storyDir, `video${videoExtension}`);
+
+      const originalVideoPath = removeBackground
+        ? path.join(storyDir, `original-video${videoExtension}`)
+        : null;
+
+      const finalVideoPath = removeBackground
+        ? path.join(storyDir, "video.mov")
+        : path.join(storyDir, `video${videoExtension}`);
 
       fs.renameSync(backgroundImageFile.path, finalImagePath);
-      fs.renameSync(storyVideoFile.path, finalVideoPath);
+
+      if (removeBackground) {
+        fs.renameSync(storyVideoFile.path, originalVideoPath);
+      } else {
+        fs.renameSync(storyVideoFile.path, finalVideoPath);
+      }
 
       const metadata = {
         id: storyId,
         title,
         author,
         date,
+        removeBackground,
+        videoFile: path.basename(finalVideoPath),
+        originalVideoFile: originalVideoPath
+          ? path.basename(originalVideoPath)
+          : undefined,
       };
 
       const metadataPath = path.join(storyDir, "metadata.json");
@@ -464,17 +560,15 @@ app.post(
 
       initializeRenderStatus(storyId, renderFormats);
 
-      const startedJobs = [];
+      const startedJobs = [...renderFormats];
 
-      if (renderFormats.includes("insta")) {
-        startRenderProcess(config.renderScripts.insta, storyId, "insta");
-        startedJobs.push("insta");
-      }
-
-      if (renderFormats.includes("hd")) {
-        startRenderProcess(config.renderScripts.hd, storyId, "hd");
-        startedJobs.push("hd");
-      }
+      startStoryPipeline({
+        storyId,
+        renderFormats,
+        removeBackground,
+        originalVideoPath,
+        finalVideoPath,
+      });
 
       console.log("Tallennettu uusi tarina ja käynnistetyt renderöinnit:");
       console.log({

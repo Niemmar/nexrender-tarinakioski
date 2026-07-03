@@ -20,4 +20,22 @@ export const config = {
     insta: "prepare-story-insta-render.js",
     hd: "prepare-story-hd-render.js",
   },
+
+  backgroundRemoval: {
+    toolDir: path.join(projectRootDir, "tools", "taustanpoisto"),
+    pythonPath: path.join(
+      projectRootDir,
+      "tools",
+      "taustanpoisto",
+      ".venv",
+      "Scripts",
+      "python.exe",
+    ),
+    scriptPath: path.join(
+      projectRootDir,
+      "tools",
+      "taustanpoisto",
+      "rembg_video.py",
+    ),
+  },
 };
