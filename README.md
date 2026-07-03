@@ -13,8 +13,6 @@ Projektissa voidaan luoda:
 
 Lomakkeelta voidaan myös valita, poistetaanko ladatusta videosta tausta ennen renderöintiä.
 
-Nykyinen työnkulku ei käytä Whisperiä, automaattisia tekstityksiä eikä `STATIC_TITLE`-layeria.
-
 ---
 
 ## Työnkulku
