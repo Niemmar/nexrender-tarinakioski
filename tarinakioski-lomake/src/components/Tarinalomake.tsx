@@ -106,8 +106,8 @@ export default function Tarinalomake() {
     formData.set("author", submittedStory.author);
     formData.set("date", submittedStory.date);
     formData.set("renderFormats", JSON.stringify(submittedStory.renderFormats));
+    formData.set("removeBackground", String(submittedStory.removeBackground));
     formData.set("metadataJson", JSON.stringify(submittedStory.metadataJson));
-
     console.log("Lähetetään tiedot ja tiedostot API:lle:", submittedStory);
 
     try {
