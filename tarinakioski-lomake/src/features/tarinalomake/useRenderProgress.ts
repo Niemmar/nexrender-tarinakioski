@@ -1,12 +1,16 @@
 import { useEffect, useState } from "react";
 
 import type {
+  BackgroundRemovalProgress,
   RenderFormat,
   RenderJobProgress,
   RenderStatusResponse,
 } from "./types";
 
-import { normalizeRenderProgressJobs } from "./utils";
+import {
+  normalizeBackgroundRemovalProgress,
+  normalizeRenderProgressJobs,
+} from "./utils";
 
 function createQueuedJobs(formats: RenderFormat[] | undefined) {
   if (!formats || formats.length === 0) {
@@ -17,25 +21,78 @@ function createQueuedJobs(formats: RenderFormat[] | undefined) {
     format,
     status: "queued" as const,
     progress: 0,
-    message: "Renderöinti jonossa.",
+    message: "Odottaa lopullisen videon luomista.",
   }));
+}
+
+function createQueuedBackgroundRemoval(
+  enabled: boolean | undefined,
+): BackgroundRemovalProgress | null {
+  if (!enabled) {
+    return null;
+  }
+
+  return {
+    enabled: true,
+    status: "queued",
+    steps: {
+      preprocessing: {
+        status: "queued",
+        progress: 0,
+        message: "Esikäsittely odottaa.",
+      },
+      processing: {
+        status: "queued",
+        progress: 0,
+        message: "Taustan poistaminen odottaa.",
+      },
+      finishing: {
+        status: "queued",
+        progress: 0,
+        message: "Viimeistely odottaa.",
+      },
+    },
+    error: null,
+    technicalDetails: null,
+  };
+}
+
+function isBackgroundRemovalFinished(
+  progress: BackgroundRemovalProgress | null,
+) {
+  if (!progress || !progress.enabled) {
+    return true;
+  }
+
+  return (
+    progress.status === "finished" ||
+    progress.status === "failed" ||
+    progress.status === "skipped"
+  );
 }
 
 export function useRenderProgress(
   storyId: string | undefined,
   startedJobs: RenderFormat[] | undefined,
+  removeBackground: boolean | undefined,
 ) {
   const [renderProgress, setRenderProgress] = useState<RenderJobProgress[]>([]);
+  const [backgroundRemovalProgress, setBackgroundRemovalProgress] =
+    useState<BackgroundRemovalProgress | null>(null);
   const [progressError, setProgressError] = useState("");
 
   useEffect(() => {
     if (!storyId) {
       setRenderProgress([]);
+      setBackgroundRemovalProgress(null);
       setProgressError("");
       return;
     }
 
     setRenderProgress(createQueuedJobs(startedJobs));
+    setBackgroundRemovalProgress(
+      createQueuedBackgroundRemoval(removeBackground),
+    );
     setProgressError("");
 
     let intervalId: number | undefined;
@@ -55,27 +112,36 @@ export function useRenderProgress(
 
         if (!response.ok) {
           throw new Error(
-            result.error || "Renderöinnin etenemistiedon haku epäonnistui.",
+            result.error ||
+              "Videon käsittelyn etenemistiedon haku epäonnistui.",
           );
         }
 
         const jobs = normalizeRenderProgressJobs(result.jobs);
+        const backgroundRemoval = normalizeBackgroundRemovalProgress(
+          result.backgroundRemoval,
+        );
 
         if (isCancelled) {
           return;
         }
 
         setRenderProgress(jobs);
+        setBackgroundRemovalProgress(backgroundRemoval);
         setProgressError("");
 
-        const allDone =
+        const allRenderJobsDone =
           jobs.length > 0 &&
           jobs.every(
             (job) => job.status === "finished" || job.status === "failed",
           );
 
-        if (allDone && intervalId) {
+        const backgroundRemovalDone =
+          isBackgroundRemovalFinished(backgroundRemoval);
+
+        if (allRenderJobsDone && backgroundRemovalDone && intervalId) {
           window.clearInterval(intervalId);
+          intervalId = undefined;
         }
       } catch (error: unknown) {
         if (isCancelled) {
@@ -85,14 +151,14 @@ export function useRenderProgress(
         const message =
           error instanceof Error
             ? error.message
-            : "Renderöinnin etenemistiedon haku epäonnistui.";
+            : "Videon käsittelyn etenemistiedon haku epäonnistui.";
 
         setProgressError(message);
       }
     }
 
-    fetchProgress();
     intervalId = window.setInterval(fetchProgress, 2000);
+    void fetchProgress();
 
     return () => {
       isCancelled = true;
@@ -101,10 +167,11 @@ export function useRenderProgress(
         window.clearInterval(intervalId);
       }
     };
-  }, [storyId, startedJobs]);
+  }, [storyId, startedJobs, removeBackground]);
 
   return {
     renderProgress,
+    backgroundRemovalProgress,
     progressError,
   };
 }

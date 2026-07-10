@@ -33,10 +33,12 @@ export default function Tarinalomake() {
   const [approveError, setApproveError] = useState("");
   const [titleLength, setTitleLength] = useState(0);
 
-  const { renderProgress, progressError } = useRenderProgress(
-    approveResult?.storyId,
-    approveResult?.startedJobs,
-  );
+  const { renderProgress, backgroundRemovalProgress, progressError } =
+    useRenderProgress(
+      approveResult?.storyId,
+      approveResult?.startedJobs,
+      submittedStory?.removeBackground,
+    );
 
   const allRenderJobsFinished =
     renderProgress.length > 0 &&
@@ -45,6 +47,11 @@ export default function Tarinalomake() {
   const hasFailedRenderJob = renderProgress.some(
     (job) => job.status === "failed",
   );
+
+  const hasFailedBackgroundRemoval =
+    backgroundRemovalProgress?.status === "failed";
+
+  const hasFailedProcessing = hasFailedRenderJob || hasFailedBackgroundRemoval;
 
   const outputDir =
     approveResult?.outputDir ||
@@ -108,6 +115,7 @@ export default function Tarinalomake() {
     formData.set("renderFormats", JSON.stringify(submittedStory.renderFormats));
     formData.set("removeBackground", String(submittedStory.removeBackground));
     formData.set("metadataJson", JSON.stringify(submittedStory.metadataJson));
+
     console.log("Lähetetään tiedot ja tiedostot API:lle:", submittedStory);
 
     try {
@@ -177,17 +185,22 @@ export default function Tarinalomake() {
               progressError={progressError}
             />
 
-            <RenderProgressPanel renderProgress={renderProgress} />
+            <RenderProgressPanel
+              renderProgress={renderProgress}
+              backgroundRemovalProgress={backgroundRemovalProgress}
+            />
 
             <RenderCompleteMessage
               approveResult={approveResult}
               outputDir={outputDir}
-              isVisible={allRenderJobsFinished && !hasFailedRenderJob}
+              isVisible={allRenderJobsFinished && !hasFailedProcessing}
               onStartNewStory={handleClear}
             />
 
             <RenderFailedMessage
-              isVisible={Boolean(approveResult) && hasFailedRenderJob}
+              isVisible={Boolean(approveResult) && hasFailedProcessing}
+              backgroundRemovalProgress={backgroundRemovalProgress}
+              renderProgress={renderProgress}
             />
           </section>
         )}

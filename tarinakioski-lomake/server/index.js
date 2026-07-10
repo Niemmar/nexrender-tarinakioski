@@ -13,23 +13,128 @@ const port = 3001;
 const allowedRenderFormats = ["insta", "hd"];
 const renderStatusByStoryId = new Map();
 
-function initializeRenderStatus(storyId, formats) {
+function createBackgroundRemovalStatus(enabled) {
+  const now = new Date().toISOString();
+
+  if (!enabled) {
+    return {
+      enabled: false,
+      status: "skipped",
+      steps: {},
+      error: null,
+      technicalDetails: null,
+      updatedAt: now,
+    };
+  }
+
+  return {
+    enabled: true,
+    status: "queued",
+    steps: {
+      preprocessing: {
+        status: "queued",
+        progress: 0,
+        message: "Esikäsittely odottaa.",
+        updatedAt: now,
+      },
+      processing: {
+        status: "queued",
+        progress: 0,
+        message: "Taustan poistaminen odottaa.",
+        updatedAt: now,
+      },
+      finishing: {
+        status: "queued",
+        progress: 0,
+        message: "Viimeistely odottaa.",
+        updatedAt: now,
+      },
+    },
+    error: null,
+    technicalDetails: null,
+    updatedAt: now,
+  };
+}
+
+function initializeRenderStatus(storyId, formats, removeBackground) {
   const jobs = {};
+  const now = new Date().toISOString();
 
   formats.forEach((format) => {
     jobs[format] = {
       format,
       status: "queued",
       progress: 0,
-      message: "Odottaa renderöintiä.",
-      updatedAt: new Date().toISOString(),
+      message: removeBackground
+        ? "Odottaa taustanpoiston valmistumista."
+        : "Odottaa lopullisen videon luomista.",
+      updatedAt: now,
     };
   });
 
   renderStatusByStoryId.set(storyId, {
     storyId,
+    backgroundRemoval: createBackgroundRemovalStatus(removeBackground),
     jobs,
-    updatedAt: new Date().toISOString(),
+    updatedAt: now,
+  });
+}
+
+function updateBackgroundRemovalStatus(storyId, patch) {
+  const current = renderStatusByStoryId.get(storyId);
+
+  if (!current?.backgroundRemoval) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const previous = current.backgroundRemoval;
+  const updatedSteps = {
+    ...previous.steps,
+  };
+
+  Object.entries(patch.steps ?? {}).forEach(([stepName, stepPatch]) => {
+    updatedSteps[stepName] = {
+      ...(updatedSteps[stepName] ?? {}),
+      ...stepPatch,
+      updatedAt: now,
+    };
+  });
+
+  current.backgroundRemoval = {
+    ...previous,
+    ...patch,
+    steps: updatedSteps,
+    updatedAt: now,
+  };
+
+  current.updatedAt = now;
+
+  renderStatusByStoryId.set(storyId, current);
+}
+
+function markBackgroundRemovalFailed(storyId, message, technicalDetails = "") {
+  const current = renderStatusByStoryId.get(storyId);
+  const steps = current?.backgroundRemoval?.steps ?? {};
+
+  let failedStep = "preprocessing";
+
+  if (steps.finishing?.status === "running") {
+    failedStep = "finishing";
+  } else if (steps.processing?.status === "running") {
+    failedStep = "processing";
+  }
+
+  updateBackgroundRemovalStatus(storyId, {
+    status: "failed",
+    error: message,
+    technicalDetails,
+    steps: {
+      [failedStep]: {
+        status: "failed",
+        message,
+      },
+    },
   });
 }
 
@@ -82,6 +187,7 @@ function getRenderStatusResponse(storyId) {
 
   return {
     storyId,
+    backgroundRemoval: status.backgroundRemoval,
     jobs: Object.values(status.jobs),
     updatedAt: status.updatedAt,
   };
@@ -274,22 +380,97 @@ function startStoryPipeline({
   (async () => {
     try {
       if (removeBackground) {
-        updateRenderStatuses(storyId, renderFormats, {
-          status: "preparing",
-          progress: 0,
-          message: "Poistetaan videon taustaa ennen renderöintiä.",
+        updateBackgroundRemovalStatus(storyId, {
+          status: "running",
+          error: null,
+          technicalDetails: null,
+          steps: {
+            preprocessing: {
+              status: "running",
+              progress: 0,
+              message: "Esikäsittely käynnissä.",
+            },
+          },
         });
 
         await runBackgroundRemoval({
           inputPath: originalVideoPath,
           outputPath: finalVideoPath,
           config,
+
+          onProgress: ({ step, progress }) => {
+            if (step === "processing") {
+              updateBackgroundRemovalStatus(storyId, {
+                status: "running",
+                steps: {
+                  preprocessing: {
+                    status: "finished",
+                    progress: 100,
+                    message: "Esikäsittely valmis.",
+                  },
+                  processing: {
+                    status: "running",
+                    progress,
+                    message: `Poistetaan taustaa videosta ${progress} %.`,
+                  },
+                },
+              });
+
+              return;
+            }
+
+            if (step === "smoothing") {
+              updateBackgroundRemovalStatus(storyId, {
+                status: "running",
+                steps: {
+                  preprocessing: {
+                    status: "finished",
+                    progress: 100,
+                    message: "Esikäsittely valmis.",
+                  },
+                  processing: {
+                    status: "finished",
+                    progress: 100,
+                    message: "Taustan poistaminen valmis.",
+                  },
+                  finishing: {
+                    status: "running",
+                    progress,
+                    message: `Viimeistely käynnissä ${progress} %.`,
+                  },
+                },
+              });
+            }
+          },
+        });
+
+        updateBackgroundRemovalStatus(storyId, {
+          status: "finished",
+          error: null,
+          technicalDetails: null,
+          steps: {
+            preprocessing: {
+              status: "finished",
+              progress: 100,
+              message: "Esikäsittely valmis.",
+            },
+            processing: {
+              status: "finished",
+              progress: 100,
+              message: "Taustan poistaminen valmis.",
+            },
+            finishing: {
+              status: "finished",
+              progress: 100,
+              message: "Viimeistely valmis.",
+            },
+          },
         });
 
         updateRenderStatuses(storyId, renderFormats, {
           status: "queued",
           progress: 0,
-          message: "Taustanpoisto valmis. Renderöinti odottaa käynnistystä.",
+          message: "Odottaa lopullisen videon luomista.",
         });
       }
 
@@ -301,12 +482,41 @@ function startStoryPipeline({
         startRenderProcess(config.renderScripts.hd, storyId, "hd");
       }
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Videon taustan poistaminen epäonnistui.";
+
+      const technicalDetails =
+        error && typeof error === "object" && "technicalDetails" in error
+          ? String(error.technicalDetails ?? "")
+          : error instanceof Error
+            ? error.stack || error.message
+            : String(error);
+
       console.error("Taustanpoisto tai renderöintiputki epäonnistui:", error);
+
+      if (removeBackground) {
+        markBackgroundRemovalFailed(storyId, message, technicalDetails);
+
+        updateRenderStatuses(storyId, renderFormats, {
+          status: "failed",
+          progress: 0,
+          message:
+            "Lopullisen videon luominen ei käynnistynyt, koska taustanpoisto epäonnistui.",
+          error: message,
+          technicalDetails,
+        });
+
+        return;
+      }
 
       updateRenderStatuses(storyId, renderFormats, {
         status: "failed",
         progress: 0,
-        message: "Taustanpoisto tai renderöinnin käynnistys epäonnistui.",
+        message: "Lopullisen videon luominen ei käynnistynyt.",
+        error: message,
+        technicalDetails,
       });
     }
   })();
@@ -558,7 +768,7 @@ app.post(
 
       const outputDir = path.join(config.outputRootDir, storyId);
 
-      initializeRenderStatus(storyId, renderFormats);
+      initializeRenderStatus(storyId, renderFormats, removeBackground);
 
       const startedJobs = [...renderFormats];
 

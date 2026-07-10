@@ -1,4 +1,13 @@
-import type { RenderFormat, RenderJobProgress, RenderJobStatus } from "./types";
+import type {
+  BackgroundRemovalProgress,
+  BackgroundRemovalStatus,
+  BackgroundRemovalStepName,
+  BackgroundRemovalStepProgress,
+  BackgroundRemovalStepStatus,
+  RenderFormat,
+  RenderJobProgress,
+  RenderJobStatus,
+} from "./types";
 
 export function getTodayDate() {
   const today = new Date();
@@ -22,6 +31,29 @@ export function isRenderJobStatus(value: unknown): value is RenderJobStatus {
   );
 }
 
+export function isBackgroundRemovalStatus(
+  value: unknown,
+): value is BackgroundRemovalStatus {
+  return (
+    value === "skipped" ||
+    value === "queued" ||
+    value === "running" ||
+    value === "finished" ||
+    value === "failed"
+  );
+}
+
+export function isBackgroundRemovalStepStatus(
+  value: unknown,
+): value is BackgroundRemovalStepStatus {
+  return (
+    value === "queued" ||
+    value === "running" ||
+    value === "finished" ||
+    value === "failed"
+  );
+}
+
 export function getRenderFormatLabel(format: RenderFormat) {
   if (format === "insta") {
     return "Instagram-video";
@@ -40,7 +72,37 @@ export function getRenderJobStatusLabel(status: RenderJobStatus) {
   }
 
   if (status === "rendering") {
-    return "Renderöidään";
+    return "Luodaan";
+  }
+
+  if (status === "finished") {
+    return "Valmis";
+  }
+
+  return "Epäonnistui";
+}
+
+export function getBackgroundRemovalStepLabel(step: BackgroundRemovalStepName) {
+  if (step === "preprocessing") {
+    return "Esikäsittely";
+  }
+
+  if (step === "processing") {
+    return "Taustan poistaminen";
+  }
+
+  return "Viimeistely";
+}
+
+export function getBackgroundRemovalStepStatusLabel(
+  status: BackgroundRemovalStepStatus,
+) {
+  if (status === "queued") {
+    return "Odottaa";
+  }
+
+  if (status === "running") {
+    return "Käynnissä";
   }
 
   if (status === "finished") {
@@ -70,6 +132,103 @@ export function clampProgress(progress: number) {
   return Math.max(0, Math.min(100, progress));
 }
 
+function normalizeOptionalString(value: unknown) {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function normalizeBackgroundRemovalStep(
+  value: unknown,
+  fallbackMessage: string,
+): BackgroundRemovalStepProgress {
+  if (!value || typeof value !== "object") {
+    return {
+      status: "queued",
+      progress: 0,
+      message: fallbackMessage,
+    };
+  }
+
+  const item = value as {
+    status?: unknown;
+    progress?: unknown;
+    message?: unknown;
+    updatedAt?: unknown;
+  };
+
+  const status = isBackgroundRemovalStepStatus(item.status)
+    ? item.status
+    : "queued";
+
+  const rawProgress =
+    typeof item.progress === "number" ? item.progress : Number(item.progress);
+
+  const progress = Number.isFinite(rawProgress)
+    ? clampProgress(rawProgress)
+    : 0;
+
+  return {
+    status,
+    progress,
+    message: normalizeOptionalString(item.message) ?? fallbackMessage,
+    updatedAt: normalizeOptionalString(item.updatedAt),
+  };
+}
+
+export function normalizeBackgroundRemovalProgress(
+  value: unknown,
+): BackgroundRemovalProgress | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const item = value as {
+    enabled?: unknown;
+    status?: unknown;
+    steps?: unknown;
+    error?: unknown;
+    technicalDetails?: unknown;
+    updatedAt?: unknown;
+  };
+
+  if (
+    typeof item.enabled !== "boolean" ||
+    !isBackgroundRemovalStatus(item.status)
+  ) {
+    return null;
+  }
+
+  const rawSteps =
+    item.steps && typeof item.steps === "object"
+      ? (item.steps as Record<string, unknown>)
+      : {};
+
+  const steps = item.enabled
+    ? {
+        preprocessing: normalizeBackgroundRemovalStep(
+          rawSteps.preprocessing,
+          "Esikäsittely odottaa.",
+        ),
+        processing: normalizeBackgroundRemovalStep(
+          rawSteps.processing,
+          "Taustan poistaminen odottaa.",
+        ),
+        finishing: normalizeBackgroundRemovalStep(
+          rawSteps.finishing,
+          "Viimeistely odottaa.",
+        ),
+      }
+    : {};
+
+  return {
+    enabled: item.enabled,
+    status: item.status,
+    steps,
+    error: normalizeOptionalString(item.error) ?? null,
+    technicalDetails: normalizeOptionalString(item.technicalDetails) ?? null,
+    updatedAt: normalizeOptionalString(item.updatedAt),
+  };
+}
+
 export function normalizeRenderProgressJobs(
   jobs: unknown,
 ): RenderJobProgress[] {
@@ -89,6 +248,9 @@ export function normalizeRenderProgressJobs(
       status?: unknown;
       progress?: unknown;
       message?: unknown;
+      error?: unknown;
+      technicalDetails?: unknown;
+      updatedAt?: unknown;
     };
 
     if (!isRenderFormat(item.format) || !isRenderJobStatus(item.status)) {
@@ -102,17 +264,15 @@ export function normalizeRenderProgressJobs(
       ? clampProgress(rawProgress)
       : 0;
 
-    const normalizedJob: RenderJobProgress = {
+    normalizedJobs.push({
       format: item.format,
       status: item.status,
       progress,
-    };
-
-    if (typeof item.message === "string" && item.message.length > 0) {
-      normalizedJob.message = item.message;
-    }
-
-    normalizedJobs.push(normalizedJob);
+      message: normalizeOptionalString(item.message),
+      error: normalizeOptionalString(item.error),
+      technicalDetails: normalizeOptionalString(item.technicalDetails),
+      updatedAt: normalizeOptionalString(item.updatedAt),
+    });
   });
 
   return normalizedJobs;
