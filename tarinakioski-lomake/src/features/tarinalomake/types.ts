@@ -32,7 +32,8 @@ export type RenderJobStatus =
   | "preparing"
   | "rendering"
   | "finished"
-  | "failed";
+  | "failed"
+  | "cancelled";
 
 export type RenderJobProgress = {
   format: RenderFormat;
@@ -49,13 +50,15 @@ export type BackgroundRemovalStatus =
   | "queued"
   | "running"
   | "finished"
-  | "failed";
+  | "failed"
+  | "cancelled";
 
 export type BackgroundRemovalStepStatus =
   | "queued"
   | "running"
   | "finished"
-  | "failed";
+  | "failed"
+  | "cancelled";
 
 export type BackgroundRemovalStepName =
   | "preprocessing"
@@ -87,4 +90,6 @@ export type RenderStatusResponse = {
   backgroundRemoval?: unknown;
   jobs?: unknown;
   error?: string;
+  cancelled: boolean;
+  canCancel: boolean;
 };

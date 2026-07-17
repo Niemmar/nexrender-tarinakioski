@@ -15,6 +15,9 @@ import {
 type RenderProgressPanelProps = {
   renderProgress: RenderJobProgress[];
   backgroundRemovalProgress: BackgroundRemovalProgress | null;
+  canCancel: boolean;
+  isCancelling: boolean;
+  onCancel: () => void;
 };
 
 const backgroundRemovalStepOrder: BackgroundRemovalStepName[] = [
@@ -61,9 +64,24 @@ function getRenderJobText(job: RenderJobProgress) {
   return getRenderJobStatusLabel(job.status);
 }
 
+function getJobMessageClassName(job: RenderJobProgress) {
+  if (job.status === "failed") {
+    return "text-red-700";
+  }
+
+  if (job.status === "cancelled") {
+    return "text-amber-800";
+  }
+
+  return "text-blue-800";
+}
+
 export function RenderProgressPanel({
   renderProgress,
   backgroundRemovalProgress,
+  canCancel,
+  isCancelling,
+  onCancel,
 }: RenderProgressPanelProps) {
   const showBackgroundRemoval = Boolean(backgroundRemovalProgress?.enabled);
 
@@ -115,6 +133,12 @@ export function RenderProgressPanel({
                         {step.message}
                       </p>
                     )}
+
+                    {step.status === "cancelled" && step.message && (
+                      <p className="mt-1 text-xs text-amber-800">
+                        {step.message}
+                      </p>
+                    )}
                   </div>
                 );
               })}
@@ -144,11 +168,7 @@ export function RenderProgressPanel({
                 />
 
                 {job.message && (
-                  <p
-                    className={`mt-1 text-xs ${
-                      job.status === "failed" ? "text-red-700" : "text-blue-800"
-                    }`}
-                  >
+                  <p className={`mt-1 text-xs ${getJobMessageClassName(job)}`}>
                     {job.message}
                   </p>
                 )}
@@ -157,6 +177,19 @@ export function RenderProgressPanel({
           </div>
         </section>
       </div>
+
+      {canCancel && (
+        <div className="mt-6 border-t border-blue-200 pt-4">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isCancelling}
+            className="rounded-md border border-red-600 px-4 py-2 font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isCancelling ? "Keskeytetään…" : "Keskeytä"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -12,7 +12,13 @@ import {
   normalizeRenderProgressJobs,
 } from "./utils";
 
-function createQueuedJobs(formats: RenderFormat[] | undefined) {
+type RenderStatusApiResponse = Partial<RenderStatusResponse> & {
+  error?: string;
+};
+
+function createQueuedJobs(
+  formats: RenderFormat[] | undefined,
+): RenderJobProgress[] {
   if (!formats || formats.length === 0) {
     return [];
   }
@@ -67,7 +73,21 @@ function isBackgroundRemovalFinished(
   return (
     progress.status === "finished" ||
     progress.status === "failed" ||
-    progress.status === "skipped"
+    progress.status === "skipped" ||
+    progress.status === "cancelled"
+  );
+}
+
+function areRenderJobsFinished(jobs: RenderJobProgress[]) {
+  if (jobs.length === 0) {
+    return true;
+  }
+
+  return jobs.every(
+    (job) =>
+      job.status === "finished" ||
+      job.status === "failed" ||
+      job.status === "cancelled",
   );
 }
 
@@ -77,35 +97,64 @@ export function useRenderProgress(
   removeBackground: boolean | undefined,
 ) {
   const [renderProgress, setRenderProgress] = useState<RenderJobProgress[]>([]);
+
   const [backgroundRemovalProgress, setBackgroundRemovalProgress] =
     useState<BackgroundRemovalProgress | null>(null);
+
   const [progressError, setProgressError] = useState("");
+
+  const [canCancel, setCanCancel] = useState(false);
+
+  const [wasCancelled, setWasCancelled] = useState(false);
 
   useEffect(() => {
     if (!storyId) {
       setRenderProgress([]);
       setBackgroundRemovalProgress(null);
       setProgressError("");
+      setCanCancel(false);
+      setWasCancelled(false);
       return;
     }
 
+    /*
+     * storyId on tarkistettu yllä string-arvoksi.
+     * Käytetään sisäisessä async-funktiossa tätä
+     * paikallista vakiota, jotta TypeScript tietää
+     * varmasti arvon olevan string.
+     */
+    const currentStoryId = storyId;
+
     setRenderProgress(createQueuedJobs(startedJobs));
+
     setBackgroundRemovalProgress(
       createQueuedBackgroundRemoval(removeBackground),
     );
+
     setProgressError("");
+    setCanCancel(true);
+    setWasCancelled(false);
 
     let intervalId: number | undefined;
-    let isCancelled = false;
+    let effectDisposed = false;
+
+    function stopPolling() {
+      if (intervalId !== undefined) {
+        window.clearInterval(intervalId);
+        intervalId = undefined;
+      }
+    }
 
     async function fetchProgress() {
       try {
-        const response = await fetch(`/api/stories/${storyId}/status`);
+        const response = await fetch(
+          `/api/stories/${encodeURIComponent(currentStoryId)}/status`,
+        );
 
-        let result: RenderStatusResponse = {};
+        let result: RenderStatusApiResponse = {};
 
         try {
-          result = (await response.json()) as RenderStatusResponse;
+          result = (await response.json()) as RenderStatusApiResponse;
         } catch {
           result = {};
         }
@@ -118,33 +167,38 @@ export function useRenderProgress(
         }
 
         const jobs = normalizeRenderProgressJobs(result.jobs);
+
         const backgroundRemoval = normalizeBackgroundRemovalProgress(
           result.backgroundRemoval,
         );
 
-        if (isCancelled) {
+        if (effectDisposed) {
           return;
         }
 
+        const cancelled = result.cancelled === true;
+
         setRenderProgress(jobs);
+
         setBackgroundRemovalProgress(backgroundRemoval);
+
         setProgressError("");
 
-        const allRenderJobsDone =
-          jobs.length > 0 &&
-          jobs.every(
-            (job) => job.status === "finished" || job.status === "failed",
-          );
+        setCanCancel(result.canCancel === true);
+
+        setWasCancelled(cancelled);
+
+        const allRenderJobsDone = areRenderJobsFinished(jobs);
 
         const backgroundRemovalDone =
           isBackgroundRemovalFinished(backgroundRemoval);
 
-        if (allRenderJobsDone && backgroundRemovalDone && intervalId) {
-          window.clearInterval(intervalId);
-          intervalId = undefined;
+        if (cancelled || (allRenderJobsDone && backgroundRemovalDone)) {
+          setCanCancel(false);
+          stopPolling();
         }
       } catch (error: unknown) {
-        if (isCancelled) {
+        if (effectDisposed) {
           return;
         }
 
@@ -157,15 +211,15 @@ export function useRenderProgress(
       }
     }
 
-    intervalId = window.setInterval(fetchProgress, 2000);
+    intervalId = window.setInterval(() => {
+      void fetchProgress();
+    }, 2000);
+
     void fetchProgress();
 
     return () => {
-      isCancelled = true;
-
-      if (intervalId) {
-        window.clearInterval(intervalId);
-      }
+      effectDisposed = true;
+      stopPolling();
     };
   }, [storyId, startedJobs, removeBackground]);
 
@@ -173,5 +227,7 @@ export function useRenderProgress(
     renderProgress,
     backgroundRemovalProgress,
     progressError,
+    canCancel,
+    wasCancelled,
   };
 }

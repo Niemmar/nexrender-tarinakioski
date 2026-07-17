@@ -28,6 +28,7 @@ export function runBackgroundRemoval({
   outputPath,
   config,
   onProgress,
+  onSpawn,
 }) {
   return new Promise((resolve, reject) => {
     const { toolDir, pythonPath, scriptPath } = config.backgroundRemoval;
@@ -77,6 +78,8 @@ export function runBackgroundRemoval({
       cwd: toolDir,
       windowsHide: true,
     });
+
+    onSpawn?.(backgroundRemovalProcess);
 
     let stdoutBuffer = "";
     let stderrBuffer = "";

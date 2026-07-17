@@ -24,3 +24,26 @@ export async function approveStory(formData: FormData) {
 
   return result;
 }
+
+import type { RenderStatusResponse } from "./types";
+
+export async function cancelStory(
+  storyId: string,
+): Promise<RenderStatusResponse> {
+  const response = await fetch(
+    `/api/stories/${encodeURIComponent(storyId)}/cancel`,
+    {
+      method: "POST",
+    },
+  );
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      result.error ?? "Videoiden työstämisen keskeyttäminen epäonnistui.",
+    );
+  }
+
+  return result;
+}

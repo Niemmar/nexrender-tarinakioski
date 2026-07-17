@@ -13,6 +13,156 @@ const port = 3001;
 const allowedRenderFormats = ["insta", "hd"];
 const renderStatusByStoryId = new Map();
 
+const activeProcessesByStoryId = new Map();
+const cancelledStoryIds = new Set();
+
+const terminalStatuses = new Set([
+  "finished",
+  "failed",
+  "cancelled",
+  "skipped",
+]);
+
+function isStoryCancelled(storyId) {
+  return cancelledStoryIds.has(storyId);
+}
+
+function registerStoryProcess(storyId, childProcess) {
+  let processes = activeProcessesByStoryId.get(storyId);
+
+  if (!processes) {
+    processes = new Set();
+    activeProcessesByStoryId.set(storyId, processes);
+  }
+
+  processes.add(childProcess);
+
+  const unregisterProcess = () => {
+    const currentProcesses = activeProcessesByStoryId.get(storyId);
+
+    if (!currentProcesses) {
+      return;
+    }
+
+    currentProcesses.delete(childProcess);
+
+    if (currentProcesses.size === 0) {
+      activeProcessesByStoryId.delete(storyId);
+    }
+  };
+
+  childProcess.once("close", unregisterProcess);
+  childProcess.once("error", unregisterProcess);
+}
+
+function killProcessTree(childProcess) {
+  return new Promise((resolve) => {
+    if (!childProcess?.pid || childProcess.exitCode !== null) {
+      resolve();
+      return;
+    }
+
+    if (process.platform === "win32") {
+      const taskkillProcess = spawn(
+        "taskkill",
+        ["/PID", String(childProcess.pid), "/T", "/F"],
+        {
+          windowsHide: true,
+        },
+      );
+
+      taskkillProcess.once("close", () => {
+        resolve();
+      });
+
+      taskkillProcess.once("error", () => {
+        try {
+          childProcess.kill();
+        } catch {
+          // Prosessi on saattanut jo päättyä.
+        }
+
+        resolve();
+      });
+
+      return;
+    }
+
+    try {
+      childProcess.kill("SIGTERM");
+    } catch {
+      // Prosessi on saattanut jo päättyä.
+    }
+
+    resolve();
+  });
+}
+
+function canCancelStory(status) {
+  if (status.cancelled) {
+    return false;
+  }
+
+  const backgroundRemovalCanBeCancelled =
+    status.backgroundRemoval?.enabled &&
+    !terminalStatuses.has(status.backgroundRemoval.status);
+
+  const renderCanBeCancelled = Object.values(status.jobs ?? {}).some(
+    (job) => !terminalStatuses.has(job.status),
+  );
+
+  return backgroundRemovalCanBeCancelled || renderCanBeCancelled;
+}
+
+function markStoryCancelled(storyId) {
+  const current = renderStatusByStoryId.get(storyId);
+
+  if (!current) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+
+  if (current.backgroundRemoval?.enabled) {
+    const cancelledSteps = {};
+
+    for (const [stepName, step] of Object.entries(
+      current.backgroundRemoval.steps ?? {},
+    )) {
+      cancelledSteps[stepName] = {
+        ...step,
+        status: "cancelled",
+        message: "Keskeytetty.",
+        updatedAt: now,
+      };
+    }
+
+    current.backgroundRemoval = {
+      ...current.backgroundRemoval,
+      status: "cancelled",
+      steps: cancelledSteps,
+      error: null,
+      technicalDetails: null,
+      updatedAt: now,
+    };
+  }
+
+  for (const job of Object.values(current.jobs ?? {})) {
+    Object.assign(job, {
+      status: "cancelled",
+      message: "Videon työstäminen keskeytettiin.",
+      error: null,
+      technicalDetails: null,
+      updatedAt: now,
+    });
+  }
+
+  current.cancelled = true;
+  current.updatedAt = now;
+
+  renderStatusByStoryId.set(storyId, current);
+}
+
 function createBackgroundRemovalStatus(enabled) {
   const now = new Date().toISOString();
 
@@ -57,6 +207,8 @@ function createBackgroundRemovalStatus(enabled) {
 }
 
 function initializeRenderStatus(storyId, formats, removeBackground) {
+  cancelledStoryIds.delete(storyId);
+
   const jobs = {};
   const now = new Date().toISOString();
 
@@ -76,11 +228,16 @@ function initializeRenderStatus(storyId, formats, removeBackground) {
     storyId,
     backgroundRemoval: createBackgroundRemovalStatus(removeBackground),
     jobs,
+    cancelled: false,
     updatedAt: now,
   });
 }
 
 function updateBackgroundRemovalStatus(storyId, patch) {
+  if (isStoryCancelled(storyId)) {
+    return;
+  }
+
   const current = renderStatusByStoryId.get(storyId);
 
   if (!current?.backgroundRemoval) {
@@ -139,6 +296,10 @@ function markBackgroundRemovalFailed(storyId, message, technicalDetails = "") {
 }
 
 function updateRenderStatus(storyId, format, patch) {
+  if (isStoryCancelled(storyId)) {
+    return;
+  }
+
   const current = renderStatusByStoryId.get(storyId) ?? {
     storyId,
     jobs: {},
@@ -189,6 +350,8 @@ function getRenderStatusResponse(storyId) {
     storyId,
     backgroundRemoval: status.backgroundRemoval,
     jobs: Object.values(status.jobs),
+    cancelled: Boolean(status.cancelled),
+    canCancel: canCancelStory(status),
     updatedAt: status.updatedAt,
   };
 }
@@ -374,11 +537,15 @@ function startStoryPipeline({
   storyId,
   renderFormats,
   removeBackground,
-  originalVideoPath,
-  finalVideoPath,
+  colorVideoPath,
+  maskVideoPath,
 }) {
   (async () => {
     try {
+      if (isStoryCancelled(storyId)) {
+        return;
+      }
+
       if (removeBackground) {
         updateBackgroundRemovalStatus(storyId, {
           status: "running",
@@ -394,11 +561,19 @@ function startStoryPipeline({
         });
 
         await runBackgroundRemoval({
-          inputPath: originalVideoPath,
-          outputPath: finalVideoPath,
+          inputPath: colorVideoPath,
+          outputPath: maskVideoPath,
           config,
 
+          onSpawn: (backgroundRemovalProcess) => {
+            registerStoryProcess(storyId, backgroundRemovalProcess);
+          },
+
           onProgress: ({ step, progress }) => {
+            if (isStoryCancelled(storyId)) {
+              return;
+            }
+
             if (step === "processing") {
               updateBackgroundRemovalStatus(storyId, {
                 status: "running",
@@ -444,6 +619,15 @@ function startStoryPipeline({
           },
         });
 
+        /*
+         * Jos käyttäjä keskeytti taustanpoiston,
+         * älä merkitse sitä valmiiksi äläkä käynnistä
+         * renderöintiä.
+         */
+        if (isStoryCancelled(storyId)) {
+          return;
+        }
+
         updateBackgroundRemovalStatus(storyId, {
           status: "finished",
           error: null,
@@ -474,6 +658,14 @@ function startStoryPipeline({
         });
       }
 
+      /*
+       * Tarkistetaan vielä ennen renderöintien
+       * käynnistämistä.
+       */
+      if (isStoryCancelled(storyId)) {
+        return;
+      }
+
       if (renderFormats.includes("insta")) {
         startRenderProcess(config.renderScripts.insta, storyId, "insta");
       }
@@ -482,6 +674,14 @@ function startStoryPipeline({
         startRenderProcess(config.renderScripts.hd, storyId, "hd");
       }
     } catch (error) {
+      /*
+       * Prosessin tappaminen voi aiheuttaa virheen.
+       * Keskeytettyä työtä ei merkitä epäonnistuneeksi.
+       */
+      if (isStoryCancelled(storyId)) {
+        return;
+      }
+
       const message =
         error instanceof Error
           ? error.message
@@ -523,6 +723,10 @@ function startStoryPipeline({
 }
 
 function startRenderProcess(scriptName, storyId, format) {
+  if (isStoryCancelled(storyId)) {
+    return;
+  }
+
   updateRenderStatus(storyId, format, {
     status: "preparing",
     progress: 0,
@@ -533,6 +737,8 @@ function startRenderProcess(scriptName, storyId, format) {
     cwd: config.projectRootDir,
   });
 
+  registerStoryProcess(storyId, prepareProcess);
+
   prepareProcess.stdout.on("data", (data) => {
     console.log(`[${scriptName} stdout] ${data.toString().trim()}`);
   });
@@ -542,6 +748,10 @@ function startRenderProcess(scriptName, storyId, format) {
   });
 
   prepareProcess.on("close", (code) => {
+    if (isStoryCancelled(storyId)) {
+      return;
+    }
+
     console.log(`[${scriptName}] päättyi koodilla ${code}`);
 
     if (code !== 0) {
@@ -600,7 +810,13 @@ function startRenderProcess(scriptName, storyId, format) {
             cwd: config.projectRootDir,
           });
 
+    registerStoryProcess(storyId, nexrenderProcess);
+
     nexrenderProcess.stdout.on("data", (data) => {
+      if (isStoryCancelled(storyId)) {
+        return;
+      }
+
       const text = data.toString().trim();
 
       console.log(`[nexrender ${format} stdout] ${text}`);
@@ -621,6 +837,10 @@ function startRenderProcess(scriptName, storyId, format) {
     });
 
     nexrenderProcess.on("close", (renderCode) => {
+      if (isStoryCancelled(storyId)) {
+        return;
+      }
+
       console.log(`[nexrender ${format}] päättyi koodilla ${renderCode}`);
 
       if (renderCode === 0) {
@@ -638,6 +858,9 @@ function startRenderProcess(scriptName, storyId, format) {
     });
 
     nexrenderProcess.on("error", (error) => {
+      if (isStoryCancelled(storyId)) {
+        return;
+      }
       updateRenderStatus(storyId, format, {
         status: "failed",
         message: "Nexrenderin käynnistys epäonnistui.",
@@ -648,6 +871,10 @@ function startRenderProcess(scriptName, storyId, format) {
   });
 
   prepareProcess.on("error", (error) => {
+    if (isStoryCancelled(storyId)) {
+      return;
+    }
+
     updateRenderStatus(storyId, format, {
       status: "failed",
       progress: 0,
@@ -730,21 +957,14 @@ app.post(
 
       const finalImagePath = path.join(storyDir, `background${imageExtension}`);
 
-      const originalVideoPath = removeBackground
-        ? path.join(storyDir, `original-video${videoExtension}`)
+      const colorVideoPath = path.join(storyDir, `video${videoExtension}`);
+
+      const maskVideoPath = removeBackground
+        ? path.join(storyDir, "video-mask.mov")
         : null;
-
-      const finalVideoPath = removeBackground
-        ? path.join(storyDir, "video.mov")
-        : path.join(storyDir, `video${videoExtension}`);
-
       fs.renameSync(backgroundImageFile.path, finalImagePath);
 
-      if (removeBackground) {
-        fs.renameSync(storyVideoFile.path, originalVideoPath);
-      } else {
-        fs.renameSync(storyVideoFile.path, finalVideoPath);
-      }
+      fs.renameSync(storyVideoFile.path, colorVideoPath);
 
       const metadata = {
         id: storyId,
@@ -752,10 +972,8 @@ app.post(
         author,
         date,
         removeBackground,
-        videoFile: path.basename(finalVideoPath),
-        originalVideoFile: originalVideoPath
-          ? path.basename(originalVideoPath)
-          : undefined,
+        videoFile: path.basename(colorVideoPath),
+        maskVideoFile: maskVideoPath ? path.basename(maskVideoPath) : undefined,
       };
 
       const metadataPath = path.join(storyDir, "metadata.json");
@@ -776,8 +994,8 @@ app.post(
         storyId,
         renderFormats,
         removeBackground,
-        originalVideoPath,
-        finalVideoPath,
+        colorVideoPath,
+        maskVideoPath,
       });
 
       console.log("Tallennettu uusi tarina ja käynnistetyt renderöinnit:");
@@ -790,7 +1008,8 @@ app.post(
         startedJobs,
         storyDir,
         finalImagePath,
-        finalVideoPath,
+        colorVideoPath,
+        maskVideoPath,
         metadataPath,
       });
 
@@ -821,6 +1040,53 @@ app.post(
     }
   },
 );
+
+app.post("/api/stories/:storyId/cancel", async (req, res) => {
+  const { storyId } = req.params;
+  const currentStatus = renderStatusByStoryId.get(storyId);
+
+  if (!currentStatus) {
+    return res.status(404).json({
+      ok: false,
+      status: "error",
+      error: "Keskeytettävää työtä ei löytynyt.",
+    });
+  }
+
+  if (!canCancelStory(currentStatus)) {
+    return res.json({
+      ok: true,
+      status: "ok",
+      message: currentStatus.cancelled
+        ? "Työ on jo keskeytetty."
+        : "Videoiden työstäminen on jo päättynyt.",
+      ...getRenderStatusResponse(storyId),
+    });
+  }
+
+  /*
+   * Merkitään työ ensin keskeytetyksi.
+   * Tämän jälkeen prosessien sulkeutuminen
+   * ei muuta tilaa epäonnistuneeksi.
+   */
+  cancelledStoryIds.add(storyId);
+  markStoryCancelled(storyId);
+
+  const activeProcesses = [...(activeProcessesByStoryId.get(storyId) ?? [])];
+
+  await Promise.allSettled(
+    activeProcesses.map((childProcess) => killProcessTree(childProcess)),
+  );
+
+  activeProcessesByStoryId.delete(storyId);
+
+  return res.json({
+    ok: true,
+    status: "ok",
+    message: "Taustanpoisto ja videoiden työstäminen keskeytettiin.",
+    ...getRenderStatusResponse(storyId),
+  });
+});
 
 app.get("/api/stories/:storyId/status", (req, res) => {
   const progress = getRenderStatusResponse(req.params.storyId);

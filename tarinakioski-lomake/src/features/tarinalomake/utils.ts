@@ -79,6 +79,10 @@ export function getRenderJobStatusLabel(status: RenderJobStatus) {
     return "Valmis";
   }
 
+  if (status === "cancelled") {
+    return "Keskeytetty";
+  }
+
   return "Epäonnistui";
 }
 
@@ -107,6 +111,10 @@ export function getBackgroundRemovalStepStatusLabel(
 
   if (status === "finished") {
     return "Valmis";
+  }
+
+  if (status === "cancelled") {
+    return "Keskeytetty";
   }
 
   return "Epäonnistui";
