@@ -1,0 +1,37 @@
+Report created: 
+	7/26/2026	7:02:45 PM
+
+Project name: tarinakioski_template_v8.aep
+
+Source files collected to: 
+	C:\nexrender-tarinakioski\templates\tarinakioski_template_v8 folder
+
+Source files collected: For all comps
+
+Collected comps:  
+	MAIN
+	VIDEO_PLACEHOLDER_PRECOMP
+	
+Number of collected files:  5
+
+Size of collected files:  663 MB
+
+Collected source files: 
+	C:\Users\maria\Documents\Käkisalmi\Taustamateriaaleja\satama.jpg
+	C:\Users\maria\Documents\Käkisalmi\Taustamateriaaleja\tarina.mp4
+	C:\Users\maria\Documents\Käkisalmi\VID20260625091904.mp4
+	C:\Users\maria\Documents\Käkisalmi\VIDEOKUVAT\kakisalmikuva_tekstiton_1920x1080.png
+	C:\Users\maria\Documents\Käkisalmi\VIDEOKUVAT\Ka╠êkisalmikuva_1920x1080px.jpg
+	
+Rendering plug-ins:
+	Classic 3D
+	
+Effects used:  1
+
+Effect:  Set Matte
+	
+
+Layer:  Text Layer
+	External dependencies:  
+		Font family: “Bahianita”, Font style: “Regular”
+

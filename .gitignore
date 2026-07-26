@@ -1,4 +1,5 @@
 # Logs
+
 logs/
 *.log
 npm-debug.log*
@@ -8,70 +9,73 @@ pnpm-debug.log*
 lerna-debug.log*
 
 # Node dependencies
+
 node_modules/
 
 # Frontend build outputs
+
 dist/
 dist-ssr/
 build/
 
 # Local environment files
+
 *.local
 .env
 .env.*
 !.env.example
 
-# Python / virtual environments
+# Python virtual environments and cache files
+
 .venv/
 .venv-whisper/
-tools/taustanpoisto/.venv/
-__pycache__/
-*.pyc
+**pycache**/
+*.py[cod]
 
-# Local form uploads / temporary browser uploads
-uploads/
-tarinakioski-lomake/uploads/
+# Local uploads and temporary browser uploads
 
-# Taustanpoiston paikalliset testi- ja export-tiedostot
-tools/taustanpoisto/export/
-tools/taustanpoisto/*.mp4
-tools/taustanpoisto/*.mov
-tools/taustanpoisto/*.avi
-tools/taustanpoisto/*.mkv
-tools/taustanpoisto/*.webm
+/uploads/
+/tarinakioski-lomake/uploads/
+
+# Background-removal test and export files
+
+/tools/taustanpoisto/export/
+/tools/taustanpoisto/*.mp4
+/tools/taustanpoisto/*.mov
+/tools/taustanpoisto/*.avi
+/tools/taustanpoisto/*.mkv
+/tools/taustanpoisto/*.webm
+
+# Local input files and generated render outputs
+
+/input/
+/output/
 
 # Local media assets
-assets/
 
-# Input source videos are usually too large for GitHub
-input/**/*.mov
-input/**/*.mp4
-input/**/*.avi
-input/**/*.mkv
-input/**/*.webm
+/assets/
 
-# Background removal / render test stories
-input/9*/
-output/9*/
+# Generated subtitles and transcription outputs
 
-# Generated subtitles and temporary transcription outputs
-subtitles/
+/subtitles/
 *.srt
 *.vtt
 *.ass
 *.tsv
 *.subtitles.json
 
-# Nexrender generated / temporary subtitle jobs
-job-*-subtitles.json
+# Nexrender-generated subtitle jobs
 
-# After Effects autosaves and cache-like files
+/job-*-subtitles.json
+
+# After Effects autosaves and temporary files
+
 Adobe After Effects Auto-Save/
 *.aepx
-*.aet
 *.tmp
 
-# OS / editor
+# Operating system and editor files
+
 .DS_Store
 Thumbs.db
 .vscode/*
