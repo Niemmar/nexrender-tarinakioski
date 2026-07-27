@@ -1,0 +1,30 @@
+Report created: 
+	7/27/2026	8:07:54 PM
+
+Project name: tarinakioski_template_insta_v3.aep
+
+Source files collected to: 
+	C:\nexrender-tarinakioski\templates\tarinakioski_template_insta_v3_lahdemateriaalit
+
+Source files collected: For selected comps
+
+Collected comps:  
+	MAIN
+	
+Number of collected files:  4
+
+Size of collected files:  642 MB
+
+Collected source files: 
+	C:\Users\maria\Documents\Käkisalmi\Taustamateriaaleja\satama.jpg
+	C:\Users\maria\Documents\Käkisalmi\VID20260625091904.mp4
+	C:\Users\maria\Documents\Käkisalmi\VIDEOKUVAT\Kakisalmikuva_tekstiton_1080x1350px.png
+	C:\Users\maria\Documents\Käkisalmi\VIDEOKUVAT\Ka╠êkisalmikuva_1080x1350px.jpg
+	
+Rendering plug-ins:
+	Classic 3D
+	
+Layer:  Text Layer
+	External dependencies:  
+		Font family: “Bahianita”, Font style: “Regular”
+
