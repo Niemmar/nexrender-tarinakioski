@@ -8,10 +8,10 @@ ffmpeg.setFfprobePath(ffprobePath);
 const fps = 25;
 
 const introSeconds = 7;
-// Varsinaisen videon maksimikesto.
-// Alkutekstit tulevat tämän päälle, koska video alkaa vasta 7 s kohdalla.
+
+// Varsinaisen tarinavideon maksimikesto.
+// Alkutekstit tulevat tämän päälle, koska video alkaa vasta 7 sekunnin kohdalla.
 const maxVideoSeconds = 4 * 60;
-const maxTotalSeconds = introSeconds + maxVideoSeconds;
 
 const storyId = process.argv[2];
 
@@ -24,13 +24,15 @@ if (!storyId) {
   process.exit(1);
 }
 
-const templatePath = "templates/tarinakioski_template_v6.aep";
+const templatePathWithoutMask = "templates/tarinakioski_template_v6.aep";
+
+const templatePathWithMask = "templates/tarinakioski_template_v8.aep";
+
 const jobTemplatePath = "job-template-hd.json";
 
 const storyInputDir = path.join("input", storyId);
 const storyOutputDir = path.join("output", storyId);
 
-const inputVideoPath = path.join(storyInputDir, "video.mov");
 const metadataPath = path.join(storyInputDir, "metadata.json");
 
 const outputJobPath = path.join(storyOutputDir, "job-auto-hd.json");
@@ -58,7 +60,9 @@ function requireDirectory(dirPath, description) {
 
 function ensureDir(dirPath) {
   if (!fs.existsSync(dirPath)) {
-    fs.mkdirSync(dirPath, { recursive: true });
+    fs.mkdirSync(dirPath, {
+      recursive: true,
+    });
   }
 }
 
@@ -73,6 +77,8 @@ function readMetadata(filePath, expectedStoryId) {
       title: "",
       author: "",
       renderFormats: [],
+      videoFile: "video.mov",
+      maskVideoFile: null,
     };
   }
 
@@ -99,11 +105,14 @@ function readMetadata(filePath, expectedStoryId) {
     title: metadata.title || "",
     author: metadata.author || "",
     renderFormats,
+    videoFile: metadata.videoFile || "video.mov",
+    maskVideoFile: metadata.maskVideoFile || null,
   };
 }
 
 function findBackgroundPath(dirPath) {
   const allowedExtensions = [".jpg", ".jpeg", ".png", ".webp"];
+
   const files = fs.readdirSync(dirPath);
 
   const backgroundFile = files.find((file) => {
@@ -128,13 +137,17 @@ function findBackgroundPath(dirPath) {
 
 function getVideoDuration(videoPath) {
   return new Promise((resolve, reject) => {
-    ffmpeg.ffprobe(videoPath, (err, metadata) => {
-      if (err) return reject(err);
+    ffmpeg.ffprobe(videoPath, (error, metadata) => {
+      if (error) {
+        reject(error);
+        return;
+      }
 
       const duration = metadata?.format?.duration;
 
       if (!duration) {
-        return reject(new Error("Videotiedoston kestoa ei saatu luettua."));
+        reject(new Error("Videotiedoston kestoa ei saatu luettua."));
+        return;
       }
 
       resolve(duration);
@@ -148,12 +161,14 @@ function fileUrl(filePath) {
 
 function setTemplateSource(job, selectedTemplatePath) {
   job.template.src = fileUrl(selectedTemplatePath);
+
   job.template.composition = "MAIN";
 }
 
 function setLayerText(job, layerName, text) {
   const asset = job.assets.find(
-    (asset) => asset.type === "data" && asset.layerName === layerName,
+    (candidate) =>
+      candidate.type === "data" && candidate.layerName === layerName,
   );
 
   if (!asset) {
@@ -165,13 +180,19 @@ function setLayerText(job, layerName, text) {
 }
 
 function setLayerSource(job, layerName, filePath) {
-  const asset = job.assets.find((asset) => asset.layerName === layerName);
+  const asset = job.assets.find(
+    (candidate) => candidate.layerName === layerName,
+  );
 
   if (!asset) {
     throw new Error(`Jobista ei löytynyt assetia layerille: ${layerName}`);
   }
 
   asset.src = fileUrl(filePath);
+}
+
+function removeLayerAsset(job, layerName) {
+  job.assets = job.assets.filter((asset) => asset.layerName !== layerName);
 }
 
 function setFinalOutputPath(job, filePath) {
@@ -192,14 +213,17 @@ function setFinalOutputPath(job, filePath) {
 }
 
 function secondsToInclusiveFrameEnd(seconds) {
-  // FrameStart on 0. Jos halutaan enintään 240 s eli 4 min 25 fps -renderi,
-  // frameEnd on 5999 eli yhteensä 6000 frameä.
+  // frameStart on 0.
+  // Esimerkiksi 240 sekuntia 25 fps:llä:
+  // frameEnd 5999 tarkoittaa yhteensä 6000 framea.
   return Math.max(0, Math.ceil(seconds * fps) - 1);
 }
 
-function createFinalVideoFileName(metadata, storyId) {
-  const idPart = sanitizeFileName(metadata.id || storyId);
+function createFinalVideoFileName(metadata, currentStoryId) {
+  const idPart = sanitizeFileName(metadata.id || currentStoryId);
+
   const authorPart = sanitizeFileName(metadata.author);
+
   const titlePart = sanitizeFileName(metadata.title);
 
   const nameParts = [idPart, authorPart, titlePart].filter(Boolean);
@@ -207,26 +231,43 @@ function createFinalVideoFileName(metadata, storyId) {
   return `${nameParts.join("_")}_hd.mp4`;
 }
 
-async function createRenderJob(metadata, backgroundPath, finalVideoPath) {
+async function createRenderJob({
+  metadata,
+  backgroundPath,
+  finalVideoPath,
+  inputVideoPath,
+  maskVideoPath,
+  selectedTemplatePath,
+}) {
   console.log("Luodaan automaattinen Nexrender-jobi...");
 
   const job = JSON.parse(fs.readFileSync(jobTemplatePath, "utf8"));
 
-  setTemplateSource(job, templatePath);
+  setTemplateSource(job, selectedTemplatePath);
 
   setLayerSource(job, "VIDEO_PLACEHOLDER", inputVideoPath);
+
+  if (maskVideoPath) {
+    setLayerSource(job, "VIDEO_MASK", maskVideoPath);
+  } else {
+    // V6-templatessa ei ole VIDEO_MASK-tasoa.
+    removeLayerAsset(job, "VIDEO_MASK");
+  }
+
   setLayerSource(job, "BACKGROUND_PHOTO", backgroundPath);
 
   setLayerText(job, "STORY_TITLE", metadata.title);
+
   setLayerText(job, "STORY_AUTHOR", metadata.author);
 
   setFinalOutputPath(job, finalVideoPath);
 
   const videoDuration = await getVideoDuration(inputVideoPath);
 
-  // Kokonaismaksimi on 4 min. Siihen sisältyy 7 s alkutekstit.
-  // Jos video on tätä pidempi, lopusta leikataan renderöinnissä pois.
+  // Lopulliseen renderiin tulee intro sekä
+  // enintään neljä minuuttia tarinavideota.
   const renderedVideoSeconds = Math.min(videoDuration, maxVideoSeconds);
+
   const renderTotalSeconds = introSeconds + renderedVideoSeconds;
 
   const videoWillBeTrimmed = videoDuration > maxVideoSeconds;
@@ -236,10 +277,17 @@ async function createRenderJob(metadata, backgroundPath, finalVideoPath) {
   job.template.frameStart = 0;
   job.template.frameEnd = frameEnd;
 
+  job.assets = job.assets.map((asset) => ({
+    ...asset,
+    composition: "MAIN",
+  }));
+
   fs.writeFileSync(outputJobPath, JSON.stringify(job, null, 2), "utf8");
 
   console.log(`Videotiedoston kesto: ${videoDuration.toFixed(2)} s`);
+
   console.log(`Videon maksimikesto: ${maxVideoSeconds.toFixed(2)} s`);
+
   console.log(`Kokonaisrenderi: ${renderTotalSeconds.toFixed(2)} s`);
 
   if (videoWillBeTrimmed) {
@@ -251,30 +299,64 @@ async function createRenderJob(metadata, backgroundPath, finalVideoPath) {
   }
 
   console.log(`Renderöidään framet 0-${frameEnd}`);
+
   console.log(`Luotu jobi: ${outputJobPath}`);
 }
 
 async function main() {
   requireFile(jobTemplatePath, "Nexrender-templatejob");
-  requireFile(templatePath, "After Effects -template");
+
   requireDirectory(storyInputDir, "tarinan input-kansio");
-  requireFile(inputVideoPath, "video.mov");
+
+  const metadata = readMetadata(metadataPath, storyId);
+
+  const inputVideoPath = path.join(storyInputDir, metadata.videoFile);
+
+  const maskVideoPath = metadata.maskVideoFile
+    ? path.join(storyInputDir, metadata.maskVideoFile)
+    : null;
+
+  const selectedTemplatePath = maskVideoPath
+    ? templatePathWithMask
+    : templatePathWithoutMask;
+
+  requireFile(selectedTemplatePath, "After Effects -template");
+
+  requireFile(inputVideoPath, "värivideo");
+
+  if (maskVideoPath) {
+    requireFile(maskVideoPath, "maskivideo");
+  }
 
   const backgroundPath = findBackgroundPath(storyInputDir);
 
   ensureDir(storyOutputDir);
 
-  const metadata = readMetadata(metadataPath, storyId);
-
   const finalVideoFileName = createFinalVideoFileName(metadata, storyId);
+
   const finalVideoPath = path.join(storyOutputDir, finalVideoFileName);
 
-  await createRenderJob(metadata, backgroundPath, finalVideoPath);
+  await createRenderJob({
+    metadata,
+    backgroundPath,
+    finalVideoPath,
+    inputVideoPath,
+    maskVideoPath,
+    selectedTemplatePath,
+  });
 
   console.log("");
   console.log("Valittu versio: HD");
   console.log(`Story ID: ${metadata.id}`);
-  console.log(`Template: ${templatePath}`);
+  console.log(`Template: ${selectedTemplatePath}`);
+  console.log(`Värivideo: ${inputVideoPath}`);
+
+  if (maskVideoPath) {
+    console.log(`Maskivideo: ${maskVideoPath}`);
+  } else {
+    console.log("Maskivideo: ei käytössä");
+  }
+
   console.log(`Taustakuva: ${backgroundPath}`);
 
   if (!metadata.title) {
@@ -290,14 +372,16 @@ async function main() {
   }
 
   console.log(`Valmis video muodostuu tiedostoon: ${finalVideoPath}`);
+
   console.log("");
   console.log("Valmis. Voit renderöidä komennolla:");
+
   console.log(
     `nexrender-cli --file ${outputJobPath} --binary "C:\\Program Files\\Adobe\\Adobe After Effects 2026\\Support Files\\aerender.exe"`,
   );
 }
 
-main().catch((err) => {
-  console.error("Virhe:", err.message);
+main().catch((error) => {
+  console.error("Virhe:", error.message);
   process.exit(1);
 });

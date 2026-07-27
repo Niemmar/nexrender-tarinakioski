@@ -11,6 +11,11 @@
     },
     {
       "src": "",
+      "type": "video",
+      "layerName": "VIDEO_MASK"
+    },
+    {
+      "src": "",
       "type": "image",
       "layerName": "BACKGROUND_PHOTO"
     },
