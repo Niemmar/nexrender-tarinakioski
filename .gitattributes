@@ -2,3 +2,6 @@ input/**/*.mov filter=lfs diff=lfs merge=lfs -text
 input/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
 templates/tarinakioski_template_v8_lahdemateriaalit/(Footage)/VID20260625091904.mp4 filter=lfs diff=lfs merge=lfs -text
 templates/tarinakioski_template_insta_v3_lahdemateriaalit/(Footage)/*.mp4 filter=lfs diff=lfs merge=lfs -text
+templates/tarinakioski_template_HD_lumamatte_lahdemateriaalit/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
+templates/tarinakioski_template_insta_lumamatte_lahdemateriaalit/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
+templates/tarinakioski_template_insta_MOV_lahdemateriaalit/**/*.mp4 filter=lfs diff=lfs merge=lfs -text

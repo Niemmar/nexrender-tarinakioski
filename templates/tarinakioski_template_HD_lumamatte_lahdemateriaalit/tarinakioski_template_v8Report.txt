@@ -1,0 +1,37 @@
+Report created: 
+	7/28/2026	6:47:31 AM
+
+Project name: tarinakioski_template_v8.aep
+
+Source files collected to: 
+	C:\nexrender-tarinakioski\templates\tarinakioski_template_HD_lumamatte_lahdemateriaalit
+
+Source files collected: For all comps
+
+Collected comps:  
+	MAIN
+	VIDEO_PLACEHOLDER_PRECOMP
+	
+Number of collected files:  5
+
+Size of collected files:  663 MB
+
+Collected source files: 
+	C:\nexrender-tarinakioski\templates\tarinakioski_template_v8_lahdemateriaalit\(Footage)\kakisalmikuva_tekstiton_1920x1080.png
+	C:\nexrender-tarinakioski\templates\tarinakioski_template_v8_lahdemateriaalit\(Footage)\Ka╠êkisalmikuva_1920x1080px.jpg
+	C:\nexrender-tarinakioski\templates\tarinakioski_template_v8_lahdemateriaalit\(Footage)\satama.jpg
+	C:\nexrender-tarinakioski\templates\tarinakioski_template_v8_lahdemateriaalit\(Footage)\tarina.mp4
+	C:\nexrender-tarinakioski\templates\tarinakioski_template_v8_lahdemateriaalit\(Footage)\VID20260625091904.mp4
+	
+Rendering plug-ins:
+	Classic 3D
+	
+Effects used:  1
+
+Effect:  Set Matte
+	
+
+Layer:  Text Layer
+	External dependencies:  
+		Font family: “Bahianita”, Font style: “Regular”
+

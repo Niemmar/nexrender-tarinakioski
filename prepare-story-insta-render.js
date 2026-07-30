@@ -24,13 +24,15 @@ if (!storyId) {
   process.exit(1);
 }
 
-const templatePath = "templates/tarinakioski_template_insta_v3.aep";
+const templatePathWithoutMask = "templates/tarinakioski_template_insta_v3.aep";
+
+const templatePathWithMask = "templates/tarinakioski_template_insta_v4.aep";
+
 const jobTemplatePath = "job-template-insta.json";
 
 const storyInputDir = path.join("input", storyId);
 const storyOutputDir = path.join("output", storyId);
 
-const inputVideoPath = path.join(storyInputDir, "video.mov");
 const metadataPath = path.join(storyInputDir, "metadata.json");
 
 const outputJobPath = path.join(storyOutputDir, "job-auto-insta.json");
@@ -73,6 +75,8 @@ function readMetadata(filePath, expectedStoryId) {
       title: "",
       author: "",
       renderFormats: [],
+      videoFile: "video.mov",
+      maskVideoFile: null,
     };
   }
 
@@ -90,7 +94,7 @@ function readMetadata(filePath, expectedStoryId) {
 
   if (renderFormats.length > 0 && !renderFormats.includes("insta")) {
     console.warn(
-      'Varoitus: metadata.json ei sisällä renderFormats-listassa arvoa "insta", mutta insta-jobi luodaan silti.',
+      'Varoitus: metadata.json ei sisällä renderFormats-listassa arvoa "insta", mutta Insta-jobi luodaan silti.',
     );
   }
 
@@ -99,6 +103,8 @@ function readMetadata(filePath, expectedStoryId) {
     title: metadata.title || "",
     author: metadata.author || "",
     renderFormats,
+    videoFile: metadata.videoFile || "video.mov",
+    maskVideoFile: metadata.maskVideoFile || null,
   };
 }
 
@@ -174,6 +180,10 @@ function setLayerSource(job, layerName, filePath) {
   asset.src = fileUrl(filePath);
 }
 
+function removeLayerAsset(job, layerName) {
+  job.assets = job.assets.filter((asset) => asset.layerName !== layerName);
+}
+
 function setFinalOutputPath(job, filePath) {
   if (!job.actions || !Array.isArray(job.actions.postrender)) {
     throw new Error("Jobista ei löytynyt actions.postrender-kohtaa.");
@@ -207,14 +217,29 @@ function createFinalVideoFileName(metadata, storyId) {
   return `${nameParts.join("_")}_insta.mp4`;
 }
 
-async function createRenderJob(metadata, backgroundPath, finalVideoPath) {
+async function createRenderJob({
+  metadata,
+  backgroundPath,
+  finalVideoPath,
+  inputVideoPath,
+  maskVideoPath,
+  selectedTemplatePath,
+}) {
   console.log("Luodaan automaattinen Nexrender-jobi...");
 
   const job = JSON.parse(fs.readFileSync(jobTemplatePath, "utf8"));
 
-  setTemplateSource(job, templatePath);
+  setTemplateSource(job, selectedTemplatePath);
 
   setLayerSource(job, "VIDEO_PLACEHOLDER", inputVideoPath);
+
+  if (maskVideoPath) {
+    setLayerSource(job, "VIDEO_MASK", maskVideoPath);
+  } else {
+    // V3-templatessa ei ole VIDEO_MASK-tasoa.
+    removeLayerAsset(job, "VIDEO_MASK");
+  }
+
   setLayerSource(job, "BACKGROUND_PHOTO", backgroundPath);
 
   setLayerText(job, "STORY_TITLE", metadata.title);
@@ -224,8 +249,8 @@ async function createRenderJob(metadata, backgroundPath, finalVideoPath) {
 
   const videoDuration = await getVideoDuration(inputVideoPath);
 
-  // Kokonaismaksimi on 4 min. Siihen sisältyy 7 s alkutekstit.
-  // Jos video on tätä pidempi, lopusta leikataan renderöinnissä pois.
+  // Lopulliseen renderiin tulee intro sekä
+  // enintään neljä minuuttia varsinaista tarinavideota.
   const renderedVideoSeconds = Math.min(videoDuration, maxVideoSeconds);
   const renderTotalSeconds = introSeconds + renderedVideoSeconds;
 
@@ -235,6 +260,11 @@ async function createRenderJob(metadata, backgroundPath, finalVideoPath) {
 
   job.template.frameStart = 0;
   job.template.frameEnd = frameEnd;
+
+  job.assets = job.assets.map((asset) => ({
+    ...asset,
+    composition: "MAIN",
+  }));
 
   fs.writeFileSync(outputJobPath, JSON.stringify(job, null, 2), "utf8");
 
@@ -257,25 +287,56 @@ async function createRenderJob(metadata, backgroundPath, finalVideoPath) {
 
 async function main() {
   requireFile(jobTemplatePath, "Nexrender-templatejob");
-  requireFile(templatePath, "After Effects -template");
+
   requireDirectory(storyInputDir, "tarinan input-kansio");
-  requireFile(inputVideoPath, "video.mov");
+
+  const metadata = readMetadata(metadataPath, storyId);
+
+  const inputVideoPath = path.join(storyInputDir, metadata.videoFile);
+
+  const maskVideoPath = metadata.maskVideoFile
+    ? path.join(storyInputDir, metadata.maskVideoFile)
+    : null;
+
+  const selectedTemplatePath = maskVideoPath
+    ? templatePathWithMask
+    : templatePathWithoutMask;
+
+  requireFile(selectedTemplatePath, "After Effects -template");
+  requireFile(inputVideoPath, "värivideo");
+
+  if (maskVideoPath) {
+    requireFile(maskVideoPath, "maskivideo");
+  }
 
   const backgroundPath = findBackgroundPath(storyInputDir);
 
   ensureDir(storyOutputDir);
 
-  const metadata = readMetadata(metadataPath, storyId);
-
   const finalVideoFileName = createFinalVideoFileName(metadata, storyId);
   const finalVideoPath = path.join(storyOutputDir, finalVideoFileName);
 
-  await createRenderJob(metadata, backgroundPath, finalVideoPath);
+  await createRenderJob({
+    metadata,
+    backgroundPath,
+    finalVideoPath,
+    inputVideoPath,
+    maskVideoPath,
+    selectedTemplatePath,
+  });
 
   console.log("");
-  console.log("Valittu versio: insta");
+  console.log("Valittu versio: Insta");
   console.log(`Story ID: ${metadata.id}`);
-  console.log(`Template: ${templatePath}`);
+  console.log(`Template: ${selectedTemplatePath}`);
+  console.log(`Värivideo: ${inputVideoPath}`);
+
+  if (maskVideoPath) {
+    console.log(`Maskivideo: ${maskVideoPath}`);
+  } else {
+    console.log("Maskivideo: ei käytössä");
+  }
+
   console.log(`Taustakuva: ${backgroundPath}`);
 
   if (!metadata.title) {
@@ -293,6 +354,7 @@ async function main() {
   console.log(`Valmis video muodostuu tiedostoon: ${finalVideoPath}`);
   console.log("");
   console.log("Valmis. Voit renderöidä komennolla:");
+
   console.log(
     `nexrender-cli --file ${outputJobPath} --binary "C:\\Program Files\\Adobe\\Adobe After Effects 2026\\Support Files\\aerender.exe"`,
   );
