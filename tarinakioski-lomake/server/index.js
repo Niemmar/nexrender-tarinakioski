@@ -378,9 +378,80 @@ const storage = multer.diskStorage({
   },
 });
 
+const allowedFileExtensions = {
+  backgroundImage: [".jpg", ".jpeg", ".png"],
+  storyVideo: [".mp4", ".mov"],
+};
+
 const upload = multer({
   storage,
+
+  limits: {
+    fileSize: 15 * 1024 * 1024 * 1024, // 15 GiB / tiedosto
+    files: 2,
+    fields: 10,
+    parts: 12,
+  },
+
+  fileFilter: (_req, file, callback) => {
+    const extension = path.extname(file.originalname).toLowerCase();
+    const allowed = allowedFileExtensions[file.fieldname];
+
+    if (!allowed || !allowed.includes(extension)) {
+      const message =
+        file.fieldname === "backgroundImage"
+          ? "Taustakuvan tulee olla JPG- tai PNG-tiedosto."
+          : "Videon tulee olla MP4- tai MOV-tiedosto.";
+
+      return callback(new Error(message));
+    }
+
+    callback(null, true);
+  },
 });
+
+function uploadStoryFiles(req, res, next) {
+  upload.fields([
+    { name: "backgroundImage", maxCount: 1 },
+    { name: "storyVideo", maxCount: 1 },
+  ])(req, res, (error) => {
+    if (!error) {
+      const backgroundImage = req.files?.backgroundImage?.[0];
+
+      const maxImageSize = 50 * 1024 * 1024; // 50 MiB
+
+      if (backgroundImage && backgroundImage.size > maxImageSize) {
+        cleanupUploadedFiles(req.files);
+
+        return res.status(413).json({
+          ok: false,
+          status: "error",
+          error: "Taustakuva on liian suuri. Enimmäiskoko on 50 Mt.",
+        });
+      }
+
+      return next();
+    }
+
+    if (error instanceof multer.MulterError) {
+      const isTooLarge = error.code === "LIMIT_FILE_SIZE";
+
+      return res.status(isTooLarge ? 413 : 400).json({
+        ok: false,
+        status: "error",
+        error: isTooLarge
+          ? "Tiedosto on liian suuri. Enimmäiskoko on 15 GB."
+          : "Tiedostojen lähetys epäonnistui: liian monta tiedostoa tai lomakekenttää.",
+      });
+    }
+
+    return res.status(400).json({
+      ok: false,
+      status: "error",
+      error: error.message,
+    });
+  });
+}
 
 app.use(express.json());
 
@@ -900,161 +971,150 @@ function startRenderProcess(scriptName, storyId, format) {
   });
 }
 
-app.post(
-  "/api/stories",
-  upload.fields([
-    { name: "backgroundImage", maxCount: 1 },
-    { name: "storyVideo", maxCount: 1 },
-  ]),
-  (req, res) => {
-    let files;
+app.post("/api/stories", uploadStoryFiles, (req, res) => {
+  let files;
 
-    try {
-      files = req.files;
+  try {
+    files = req.files;
 
-      const backgroundImageFile = files?.backgroundImage?.[0];
-      const storyVideoFile = files?.storyVideo?.[0];
+    const backgroundImageFile = files?.backgroundImage?.[0];
+    const storyVideoFile = files?.storyVideo?.[0];
 
-      if (!backgroundImageFile || !storyVideoFile) {
-        cleanupUploadedFiles(files);
-
-        return res.status(400).json({
-          ok: false,
-          status: "error",
-          error: "Taustakuva tai video puuttuu.",
-        });
-      }
-
-      const title = String(req.body.title ?? "").trim();
-      const author = String(req.body.author ?? "").trim();
-      const date = String(req.body.date ?? "").trim();
-
-      if (title.length > 50) {
-        cleanupUploadedFiles(files);
-
-        return res.status(400).json({
-          ok: false,
-          status: "error",
-          error: "Tarinan otsikko saa olla enintään 50 merkkiä.",
-        });
-      }
-
-      if (!title || !author || !date) {
-        cleanupUploadedFiles(files);
-
-        return res.status(400).json({
-          ok: false,
-          status: "error",
-          error: "Tarinan otsikko, kertojan nimi tai päivämäärä puuttuu.",
-        });
-      }
-
-      const renderFormats = parseRenderFormats(req.body.renderFormats);
-
-      if (renderFormats.length === 0) {
-        cleanupUploadedFiles(files);
-
-        return res.status(400).json({
-          ok: false,
-          status: "error",
-          error: "Valitse ainakin yksi luotava video.",
-        });
-      }
-
-      const { storyId, storyDir } = createStoryDir();
-
-      const removeBackground = parseBooleanFormValue(req.body.removeBackground);
-
-      const imageExtension =
-        getFileExtension(backgroundImageFile.originalname) || ".jpg";
-      const videoExtension =
-        getFileExtension(storyVideoFile.originalname) || ".mov";
-
-      const finalImagePath = path.join(storyDir, `background${imageExtension}`);
-
-      const colorVideoPath = path.join(storyDir, `video${videoExtension}`);
-
-      const maskVideoPath = removeBackground
-        ? path.join(storyDir, "video-mask.mov")
-        : null;
-      fs.renameSync(backgroundImageFile.path, finalImagePath);
-
-      fs.renameSync(storyVideoFile.path, colorVideoPath);
-
-      const metadata = {
-        id: storyId,
-        title,
-        author,
-        date,
-        removeBackground,
-        videoFile: path.basename(colorVideoPath),
-        maskVideoFile: maskVideoPath ? path.basename(maskVideoPath) : undefined,
-      };
-
-      const metadataPath = path.join(storyDir, "metadata.json");
-
-      fs.writeFileSync(
-        metadataPath,
-        JSON.stringify(metadata, null, 2),
-        "utf-8",
-      );
-
-      const outputDir = path.join(config.outputRootDir, storyId);
-
-      initializeRenderStatus(storyId, renderFormats, removeBackground);
-
-      const startedJobs = [...renderFormats];
-
-      startStoryPipeline({
-        storyId,
-        renderFormats,
-        removeBackground,
-        colorVideoPath,
-        maskVideoPath,
-      });
-
-      console.log("Tallennettu uusi tarina ja käynnistetyt renderöinnit:");
-      console.log({
-        id: storyId,
-        title,
-        author,
-        date,
-        renderFormats,
-        startedJobs,
-        storyDir,
-        finalImagePath,
-        colorVideoPath,
-        maskVideoPath,
-        metadataPath,
-      });
-
-      return res.status(201).json({
-        ok: true,
-        status: "ok",
-        message: "Tarina tallennettu ja renderöinnit käynnistetty.",
-        storyId,
-        storyDir,
-        outputDir,
-        renderFormats,
-        startedJobs,
-        metadata,
-      });
-    } catch (error) {
+    if (!backgroundImageFile || !storyVideoFile) {
       cleanupUploadedFiles(files);
 
-      console.error(
-        "Virhe tarinan tallennuksessa tai renderöinnin käynnistyksessä:",
-        error,
-      );
-
-      return res.status(500).json({
+      return res.status(400).json({
         ok: false,
         status: "error",
-        error: "Tarinan tallennus tai renderöinnin käynnistys epäonnistui.",
+        error: "Taustakuva tai video puuttuu.",
       });
     }
-  },
-);
+
+    const title = String(req.body.title ?? "").trim();
+    const author = String(req.body.author ?? "").trim();
+    const date = String(req.body.date ?? "").trim();
+
+    if (title.length > 50) {
+      cleanupUploadedFiles(files);
+
+      return res.status(400).json({
+        ok: false,
+        status: "error",
+        error: "Tarinan otsikko saa olla enintään 50 merkkiä.",
+      });
+    }
+
+    if (!title || !author || !date) {
+      cleanupUploadedFiles(files);
+
+      return res.status(400).json({
+        ok: false,
+        status: "error",
+        error: "Tarinan otsikko, kertojan nimi tai päivämäärä puuttuu.",
+      });
+    }
+
+    const renderFormats = parseRenderFormats(req.body.renderFormats);
+
+    if (renderFormats.length === 0) {
+      cleanupUploadedFiles(files);
+
+      return res.status(400).json({
+        ok: false,
+        status: "error",
+        error: "Valitse ainakin yksi luotava video.",
+      });
+    }
+
+    const { storyId, storyDir } = createStoryDir();
+
+    const removeBackground = parseBooleanFormValue(req.body.removeBackground);
+
+    const imageExtension =
+      getFileExtension(backgroundImageFile.originalname) || ".jpg";
+    const videoExtension =
+      getFileExtension(storyVideoFile.originalname) || ".mov";
+
+    const finalImagePath = path.join(storyDir, `background${imageExtension}`);
+
+    const colorVideoPath = path.join(storyDir, `video${videoExtension}`);
+
+    const maskVideoPath = removeBackground
+      ? path.join(storyDir, "video-mask.mov")
+      : null;
+    fs.renameSync(backgroundImageFile.path, finalImagePath);
+
+    fs.renameSync(storyVideoFile.path, colorVideoPath);
+
+    const metadata = {
+      id: storyId,
+      title,
+      author,
+      date,
+      removeBackground,
+      videoFile: path.basename(colorVideoPath),
+      maskVideoFile: maskVideoPath ? path.basename(maskVideoPath) : undefined,
+    };
+
+    const metadataPath = path.join(storyDir, "metadata.json");
+
+    fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2), "utf-8");
+
+    const outputDir = path.join(config.outputRootDir, storyId);
+
+    initializeRenderStatus(storyId, renderFormats, removeBackground);
+
+    const startedJobs = [...renderFormats];
+
+    startStoryPipeline({
+      storyId,
+      renderFormats,
+      removeBackground,
+      colorVideoPath,
+      maskVideoPath,
+    });
+
+    console.log("Tallennettu uusi tarina ja käynnistetyt renderöinnit:");
+    console.log({
+      id: storyId,
+      title,
+      author,
+      date,
+      renderFormats,
+      startedJobs,
+      storyDir,
+      finalImagePath,
+      colorVideoPath,
+      maskVideoPath,
+      metadataPath,
+    });
+
+    return res.status(201).json({
+      ok: true,
+      status: "ok",
+      message: "Tarina tallennettu ja renderöinnit käynnistetty.",
+      storyId,
+      storyDir,
+      outputDir,
+      renderFormats,
+      startedJobs,
+      metadata,
+    });
+  } catch (error) {
+    cleanupUploadedFiles(files);
+
+    console.error(
+      "Virhe tarinan tallennuksessa tai renderöinnin käynnistyksessä:",
+      error,
+    );
+
+    return res.status(500).json({
+      ok: false,
+      status: "error",
+      error: "Tarinan tallennus tai renderöinnin käynnistys epäonnistui.",
+    });
+  }
+});
 
 app.post("/api/stories/:storyId/cancel", async (req, res) => {
   const { storyId } = req.params;
