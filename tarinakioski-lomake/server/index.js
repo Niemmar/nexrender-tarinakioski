@@ -1121,6 +1121,13 @@ app.get("/api/stories/:storyId/status", (req, res) => {
   });
 });
 
+app.get("/api/health", (_req, res) => {
+  res.json({
+    ok: true,
+    service: "tarinakioski",
+  });
+});
+
 const frontendDistDir = path.join(
   config.projectRootDir,
   "tarinakioski-lomake",
