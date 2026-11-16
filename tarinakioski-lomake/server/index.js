@@ -574,6 +574,21 @@ function startStoryPipeline({
               return;
             }
 
+            if (step === "preprocessing") {
+              updateBackgroundRemovalStatus(storyId, {
+                status: "running",
+                steps: {
+                  preprocessing: {
+                    status: "running",
+                    progress,
+                    message: `Esikäsittely käynnissä ${progress} %.`,
+                  },
+                },
+              });
+
+              return;
+            }
+
             if (step === "processing") {
               updateBackgroundRemovalStatus(storyId, {
                 status: "running",
@@ -1106,6 +1121,14 @@ app.get("/api/stories/:storyId/status", (req, res) => {
   });
 });
 
-app.listen(port, () => {
-  console.log(`Tarinakioski API käynnissä: http://localhost:${port}`);
+const frontendDistDir = path.join(
+  config.projectRootDir,
+  "tarinakioski-lomake",
+  "dist",
+);
+
+app.use(express.static(frontendDistDir));
+
+app.listen(port, "127.0.0.1", () => {
+  console.log(`Tarinakioski käynnissä: http://127.0.0.1:${port}`);
 });

@@ -71,6 +71,7 @@ export function StoryFormFields({
             name="backgroundImage"
             type="file"
             accept="image/*"
+            className="cursor-pointer file:hidden"
             required
           />
         </div>
@@ -82,6 +83,7 @@ export function StoryFormFields({
             name="storyVideo"
             type="file"
             accept="video/*"
+            className="cursor-pointer file:hidden"
             required
           />
         </div>

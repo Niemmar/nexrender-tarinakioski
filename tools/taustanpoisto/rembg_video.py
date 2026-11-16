@@ -198,7 +198,61 @@ frame_output = ffmpeg.output(
     input_stream.video,
     str(frames_dir / "%04d.tiff"),
 )
-ffmpeg.run(frame_output, overwrite_output=True)
+
+
+duration_seconds = float(
+    video_stream.get("duration")
+    or probe.get("format", {}).get("duration")
+    or 0
+)
+
+
+progress_output = frame_output.global_args(
+    "-progress", "pipe:1",
+    "-nostats"
+)
+
+process = ffmpeg.run_async(
+    progress_output,
+    overwrite_output=True,
+    pipe_stdout=True
+)
+
+last_percent = -1
+
+for raw_line in process.stdout:
+    line = raw_line.decode("utf-8", errors="replace").strip()
+
+    if not line.startswith("out_time=") or duration_seconds <= 0:
+        continue
+
+    try:
+        hours, minutes, seconds = line.split("=", 1)[1].split(":")
+        elapsed = (
+            int(hours) * 3600
+            + int(minutes) * 60
+            + float(seconds)
+        )
+    except (ValueError, IndexError):
+        continue
+
+    percent = max(
+        0,
+        min(99, int(elapsed / duration_seconds * 100))
+    )
+
+    if percent != last_percent:
+        print(
+            f"Preprocessing progress {percent}/100",
+            flush=True
+        )
+        last_percent = percent
+
+if process.wait() != 0:
+    raise RuntimeError("Video frames extraction failed.")
+
+print("Preprocessing progress 100/100", flush=True)
+
 
 _SENTINEL = object()
 

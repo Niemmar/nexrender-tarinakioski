@@ -109,8 +109,9 @@ export function RenderProgressPanel({
                 }
 
                 const showProgressBar =
-                  stepName === "processing" || stepName === "finishing";
-
+                  stepName === "preprocessing" ||
+                  stepName === "processing" ||
+                  stepName === "finishing";
                 return (
                   <div key={stepName}>
                     <div className="flex items-center justify-between gap-4">

@@ -87,6 +87,7 @@ export function runBackgroundRemoval({
     const recentErrorLines = [];
 
     const lastReportedProgress = {
+      preprocessing: -1,
       processing: -1,
       smoothing: -1,
     };
@@ -119,6 +120,19 @@ export function runBackgroundRemoval({
         console.log(`[taustanpoisto stdout] ${line}`);
       } else {
         console.error(`[taustanpoisto stderr] ${line}`);
+      }
+
+      const preprocessingMatch = line.match(
+        /Preprocessing progress\s+(\d+)\s*\/\s*(\d+)/i,
+      );
+
+      if (preprocessingMatch) {
+        emitProgress(
+          "preprocessing",
+          Number(preprocessingMatch[1]),
+          Number(preprocessingMatch[2]),
+        );
+        return;
       }
 
       const processingMatch = line.match(
