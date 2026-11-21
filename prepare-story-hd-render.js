@@ -190,10 +190,6 @@ function setLayerSource(job, layerName, filePath) {
   asset.src = fileUrl(filePath);
 }
 
-function removeLayerAsset(job, layerName) {
-  job.assets = job.assets.filter((asset) => asset.layerName !== layerName);
-}
-
 function setFinalOutputPath(job, filePath) {
   if (!job.actions || !Array.isArray(job.actions.postrender)) {
     throw new Error("Jobista ei löytynyt actions.postrender-kohtaa.");
@@ -318,9 +314,7 @@ async function main() {
 
   requireFile(inputVideoPath, "värivideo");
 
-  if (maskVideoPath) {
-    requireFile(maskVideoPath, "maskivideo");
-  }
+  requireFile(maskVideoPath, "maskivideo");
 
   const backgroundPath = findBackgroundPath(storyInputDir);
 
@@ -344,13 +338,7 @@ async function main() {
   console.log(`Story ID: ${metadata.id}`);
   console.log(`Template: ${selectedTemplatePath}`);
   console.log(`Värivideo: ${inputVideoPath}`);
-
-  if (maskVideoPath) {
-    console.log(`Maskivideo: ${maskVideoPath}`);
-  } else {
-    console.log("Maskivideo: ei käytössä");
-  }
-
+  console.log(`Maskivideo: ${maskVideoPath}`);
   console.log(`Taustakuva: ${backgroundPath}`);
 
   if (!metadata.title) {
