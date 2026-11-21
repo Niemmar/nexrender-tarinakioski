@@ -24,9 +24,11 @@ if (!storyId) {
   process.exit(1);
 }
 
-const templatePathWithoutMask = "templates/tarinakioski_template_insta_v3.aep";
+const templatePathWithoutMask =
+  "templates/museo-tuotanto/instagram_ilman_maskia/tarinakioski_instagram_ilman_maskia.aep";
 
-const templatePathWithMask = "templates/tarinakioski_template_insta_v4.aep";
+const templatePathWithMask =
+  "templates/museo-tuotanto/instagram_maski/tarinakioski_instagram_maski.aep";
 
 const jobTemplatePath = "job-template-insta.json";
 

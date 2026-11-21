@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -12,12 +14,36 @@ type StoryFormFieldsProps = {
   onTitleLengthChange: (length: number) => void;
 };
 
+type RenderFormat = "insta" | "hd";
+
 export function StoryFormFields({
   isHidden,
   titleLength,
   titleMaxLength,
   onTitleLengthChange,
 }: StoryFormFieldsProps) {
+  const [selectedRenderFormat, setSelectedRenderFormat] =
+    useState<RenderFormat | null>(null);
+
+  const [renderFormatWarning, setRenderFormatWarning] = useState(false);
+
+  function handleRenderFormatChange(
+    format: RenderFormat,
+    checked: boolean | "indeterminate",
+  ) {
+    if (
+      checked === true &&
+      selectedRenderFormat !== null &&
+      selectedRenderFormat !== format
+    ) {
+      setRenderFormatWarning(true);
+      return;
+    }
+
+    setSelectedRenderFormat(checked === true ? format : null);
+    setRenderFormatWarning(false);
+  }
+
   return (
     <div className={isHidden ? "hidden" : "space-y-4"}>
       <div className="space-y-2">
@@ -112,21 +138,42 @@ export function StoryFormFields({
       </div>
 
       <div className="space-y-3 rounded-lg border p-4">
-        <p className="text-sm font-medium text-slate-900">Luotavat videot</p>
+        <p className="text-sm font-medium text-slate-900">Luotava video</p>
 
         <div className="flex items-center gap-2">
-          <Checkbox id="renderInsta" name="renderInsta" />
+          <Checkbox
+            id="renderInsta"
+            name="renderInsta"
+            checked={selectedRenderFormat === "insta"}
+            onCheckedChange={(checked) =>
+              handleRenderFormatChange("insta", checked)
+            }
+          />
           <Label htmlFor="renderInsta" className="cursor-pointer font-normal">
-            Luo Instagram-video
+            Luo Instagram-video (pysty 1080 × 1350 px)
           </Label>
         </div>
 
         <div className="flex items-center gap-2">
-          <Checkbox id="renderHd" name="renderHd" />
+          <Checkbox
+            id="renderHd"
+            name="renderHd"
+            checked={selectedRenderFormat === "hd"}
+            onCheckedChange={(checked) =>
+              handleRenderFormatChange("hd", checked)
+            }
+          />
           <Label htmlFor="renderHd" className="cursor-pointer font-normal">
-            Luo HD-video
+            Luo HD-video (vaaka 1920 × 1080 px)
           </Label>
         </div>
+
+        {renderFormatWarning && (
+          <p role="alert" className="text-sm font-medium text-red-600">
+            Voit luoda vain yhden videon kerrallaan. Poista ensin aiempi
+            valinta.
+          </p>
+        )}
       </div>
 
       <Button type="submit" className="w-full">

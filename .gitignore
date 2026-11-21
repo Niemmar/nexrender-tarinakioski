@@ -86,3 +86,7 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+# Museon After Effect-templates ja pohjatiedostot
+# Säilytetään paikallisesti kehitystyön ajan, ei viety gitiin.
+/templates/museo-tuotanto/

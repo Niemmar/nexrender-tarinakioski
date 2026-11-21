@@ -1026,6 +1026,16 @@ app.post("/api/stories", uploadStoryFiles, (req, res) => {
       });
     }
 
+    if (renderFormats.length > 1) {
+      cleanupUploadedFiles(files);
+
+      return res.status(400).json({
+        ok: false,
+        status: "error",
+        error: "Voit luoda vain yhden videon kerrallaan.",
+      });
+    }
+
     const { storyId, storyDir } = createStoryDir();
 
     const removeBackground = parseBooleanFormValue(req.body.removeBackground);

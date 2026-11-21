@@ -38,6 +38,7 @@ export default function Tarinalomake() {
   const [isApproving, setIsApproving] = useState(false);
   const [approveError, setApproveError] = useState("");
   const [titleLength, setTitleLength] = useState(0);
+  const [formKey, setFormKey] = useState(0);
 
   const {
     renderProgress,
@@ -180,6 +181,7 @@ export default function Tarinalomake() {
     resetApproveState();
     setIsApproving(false);
     setTitleLength(0);
+    setFormKey((current) => current + 1);
   }
 
   return (
@@ -199,6 +201,7 @@ export default function Tarinalomake() {
           </div>
 
           <StoryFormFields
+            key={formKey}
             isHidden={Boolean(submittedStory)}
             titleLength={titleLength}
             titleMaxLength={TITLE_MAX_LENGTH}

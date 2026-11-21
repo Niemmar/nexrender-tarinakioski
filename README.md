@@ -1,5 +1,17 @@
 # Nexrender Tarinakioski
 
+> **WORK IN PROGRESS – Museon tuotantoversio**
+>
+> Tuotantoversion kehitys jatkuu `museo-tuotanto`-haarassa.
+> Sovelluksen toimintalogiikkaa yksinkertaistetaan ja testataan.
+>
+> Tämä repositorio toimii toistaiseksi kehitystyön versionhallintana.
+> Lopullinen tuotantokoodi, After Effects -pohjat, lähdemateriaalit
+> sekä päivitetyt README- ja SETUP.md-ohjeet kootaan myöhemmin
+> museon omaan repositorioon.
+>
+> Alla oleva dokumentaatio kuvaa aiempaa toteutusta.
+
 ## Tarkoitus
 
 Tämä projekti luo Tarinakioski-videoita After Effects -templateista Nexrenderin avulla.

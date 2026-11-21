@@ -24,9 +24,11 @@ if (!storyId) {
   process.exit(1);
 }
 
-const templatePathWithoutMask = "templates/tarinakioski_template_v6.aep";
+const templatePathWithoutMask =
+  "templates/museo-tuotanto/hd_ilman_maskia/tarinakioski_hd_ilman_maskia.aep";
 
-const templatePathWithMask = "templates/tarinakioski_template_v8.aep";
+const templatePathWithMask =
+  "templates/museo-tuotanto/hd_maski/tarinakioski_hd_maski.aep";
 
 const jobTemplatePath = "job-template-hd.json";
 
