@@ -1038,7 +1038,7 @@ app.post("/api/stories", uploadStoryFiles, (req, res) => {
 
     const { storyId, storyDir } = createStoryDir();
 
-    const removeBackground = parseBooleanFormValue(req.body.removeBackground);
+    const removeBackground = true;
 
     const imageExtension =
       getFileExtension(backgroundImageFile.originalname) || ".jpg";

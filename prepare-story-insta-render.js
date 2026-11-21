@@ -24,10 +24,7 @@ if (!storyId) {
   process.exit(1);
 }
 
-const templatePathWithoutMask =
-  "templates/museo-tuotanto/instagram_ilman_maskia/tarinakioski_instagram_ilman_maskia.aep";
-
-const templatePathWithMask =
+const templatePath =
   "templates/museo-tuotanto/instagram_maski/tarinakioski_instagram_maski.aep";
 
 const jobTemplatePath = "job-template-insta.json";
@@ -235,13 +232,7 @@ async function createRenderJob({
 
   setLayerSource(job, "VIDEO_PLACEHOLDER", inputVideoPath);
 
-  if (maskVideoPath) {
-    setLayerSource(job, "VIDEO_MASK", maskVideoPath);
-  } else {
-    // V3-templatessa ei ole VIDEO_MASK-tasoa.
-    removeLayerAsset(job, "VIDEO_MASK");
-  }
-
+  setLayerSource(job, "VIDEO_MASK", maskVideoPath);
   setLayerSource(job, "BACKGROUND_PHOTO", backgroundPath);
 
   setLayerText(job, "STORY_TITLE", metadata.title);
@@ -296,13 +287,13 @@ async function main() {
 
   const inputVideoPath = path.join(storyInputDir, metadata.videoFile);
 
-  const maskVideoPath = metadata.maskVideoFile
-    ? path.join(storyInputDir, metadata.maskVideoFile)
-    : null;
+  if (!metadata.maskVideoFile) {
+    throw new Error("Instagram-renderöinti edellyttää maskivideota.");
+  }
 
-  const selectedTemplatePath = maskVideoPath
-    ? templatePathWithMask
-    : templatePathWithoutMask;
+  const maskVideoPath = path.join(storyInputDir, metadata.maskVideoFile);
+
+  const selectedTemplatePath = templatePath;
 
   requireFile(selectedTemplatePath, "After Effects -template");
   requireFile(inputVideoPath, "värivideo");

@@ -24,10 +24,7 @@ if (!storyId) {
   process.exit(1);
 }
 
-const templatePathWithoutMask =
-  "templates/museo-tuotanto/hd_ilman_maskia/tarinakioski_hd_ilman_maskia.aep";
-
-const templatePathWithMask =
+const templatePath =
   "templates/museo-tuotanto/hd_maski/tarinakioski_hd_maski.aep";
 
 const jobTemplatePath = "job-template-hd.json";
@@ -249,12 +246,7 @@ async function createRenderJob({
 
   setLayerSource(job, "VIDEO_PLACEHOLDER", inputVideoPath);
 
-  if (maskVideoPath) {
-    setLayerSource(job, "VIDEO_MASK", maskVideoPath);
-  } else {
-    // V6-templatessa ei ole VIDEO_MASK-tasoa.
-    removeLayerAsset(job, "VIDEO_MASK");
-  }
+  setLayerSource(job, "VIDEO_MASK", maskVideoPath);
 
   setLayerSource(job, "BACKGROUND_PHOTO", backgroundPath);
 
@@ -314,13 +306,13 @@ async function main() {
 
   const inputVideoPath = path.join(storyInputDir, metadata.videoFile);
 
-  const maskVideoPath = metadata.maskVideoFile
-    ? path.join(storyInputDir, metadata.maskVideoFile)
-    : null;
+  if (!metadata.maskVideoFile) {
+    throw new Error("HD-renderöinti edellyttää maskivideota.");
+  }
 
-  const selectedTemplatePath = maskVideoPath
-    ? templatePathWithMask
-    : templatePathWithoutMask;
+  const maskVideoPath = path.join(storyInputDir, metadata.maskVideoFile);
+
+  const selectedTemplatePath = templatePath;
 
   requireFile(selectedTemplatePath, "After Effects -template");
 

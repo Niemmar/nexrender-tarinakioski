@@ -125,7 +125,6 @@ export default function Tarinalomake() {
     formData.set("author", submittedStory.author);
     formData.set("date", submittedStory.date);
     formData.set("renderFormats", JSON.stringify(submittedStory.renderFormats));
-    formData.set("removeBackground", String(submittedStory.removeBackground));
     formData.set("metadataJson", JSON.stringify(submittedStory.metadataJson));
 
     console.log("Lähetetään tiedot ja tiedostot API:lle:", submittedStory);
@@ -187,13 +186,22 @@ export default function Tarinalomake() {
   return (
     <>
       <main className="min-h-screen bg-slate-100 p-6">
+        <header className="mx-auto mb-6 max-w-2xl px-1">
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+            Tarinakioski
+          </h1>
+          <p className="mt-1 text-base font-medium text-slate-700">
+            Museon tarinavideoiden luontityökalu
+          </p>
+        </header>
+
         <form
           ref={formRef}
           onSubmit={handleSubmit}
           className="mx-auto max-w-2xl space-y-6 rounded-xl bg-white p-6 shadow-md"
         >
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Uusi tarina</h1>
+            <h2 className="text-2xl font-bold text-slate-900">Uusi tarina</h2>
 
             <p className="mt-2 text-sm text-slate-600">
               Syötä tarinan perustiedot ja valitse, mitkä videot luodaan.
