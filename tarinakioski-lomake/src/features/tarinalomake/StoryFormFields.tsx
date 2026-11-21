@@ -128,7 +128,7 @@ export function StoryFormFields({
             }
           />
           <Label htmlFor="renderInsta" className="cursor-pointer font-normal">
-            Luo Instagram-video (pysty 1080 × 1350 px)
+            Instagram-video (pysty 1080 × 1350 px)
           </Label>
         </div>
 
@@ -142,7 +142,7 @@ export function StoryFormFields({
             }
           />
           <Label htmlFor="renderHd" className="cursor-pointer font-normal">
-            Luo HD-video (vaaka 1920 × 1080 px)
+            HD-video (vaaka 1920 × 1080 px)
           </Label>
         </div>
 
